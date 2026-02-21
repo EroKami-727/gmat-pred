@@ -1,5 +1,6 @@
 # Git ignore file for NASA GMAT Early Exit project
-data/
+data/**/*
+!data/**/.gitkeep
 **/__pycache__/
 *.pyc
 .ipynb_checkpoints/
