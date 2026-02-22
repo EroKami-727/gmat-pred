@@ -1,105 +1,104 @@
-%  GMAT Base Mission Script — Earth-to-Moon Transfer
-%  Template for Monte Carlo simulation runs.
-%  Parameters marked with [MC_PARAM] are overridden by the Python generator.
+%----------------------------------------
+%  LUNAR TRANSFER - MONTE CARLO DIRECT PROPAGATION
+%  No targeter. Fixed nominal burn, randomized dispersions.
+%  Python substitutes TOI Element1/2/3 and RAAN/AOP/INC before each run.
 %
-%  Reference: ddj116/gmat samples (Ex_HohmannTransfer, Tut_SimulatingAnOrbit)
-
-%----------------------------------------
-%---------- Spacecraft
-%----------------------------------------
-
-Create Spacecraft Sat;
-GMAT Sat.DateFormat = UTCGregorian;
-GMAT Sat.Epoch = '01 Jan 2025 00:00:00.000';   % [MC_PARAM]
-GMAT Sat.CoordinateSystem = EarthMJ2000Eq;
-GMAT Sat.DisplayStateType = Keplerian;
-GMAT Sat.SMA = 7000;                            % [MC_PARAM] Semi-Major Axis (km)
-GMAT Sat.ECC = 0.001;                           % [MC_PARAM] Eccentricity
-GMAT Sat.INC = 28.5;                            % [MC_PARAM] Inclination (deg)
-GMAT Sat.RAAN = 0;                              % [MC_PARAM] Right Ascension (deg)
-GMAT Sat.AOP = 0;                               % [MC_PARAM] Arg of Periapsis (deg)
-GMAT Sat.TA = 0;                                % [MC_PARAM] True Anomaly (deg)
-GMAT Sat.DryMass = 850;                         % [MC_PARAM] Dry Mass (kg)
-GMAT Sat.Cd = 2.2;
-GMAT Sat.Cr = 1.8;
-GMAT Sat.DragArea = 15;
-GMAT Sat.SRPArea = 1;
-GMAT Sat.Id = 'MCSat';
-GMAT Sat.Attitude = CoordinateSystemFixed;
-
-%  Fuel tank
-Create ChemicalTank FuelTank;
-GMAT FuelTank.FuelMass = 300;                   % [MC_PARAM] Fuel Mass (kg)
-GMAT FuelTank.Pressure = 1500;
-GMAT FuelTank.Temperature = 20;
-GMAT FuelTank.Volume = 0.75;
-GMAT Sat.Tanks = {FuelTank};
-
-%----------------------------------------
-%---------- Force Model
+%  Nominal solution from converged targeter:
+%    TOI_V  = 3.13320815411 km/s
+%    RAAN   = 199.53225783 deg
+%    AOP    = 358.309113604 deg
+%
+%  Reference: trials/LunarTransfer_ML_v2.script
 %----------------------------------------
 
-Create ForceModel EarthMoonProp_ForceModel;
-GMAT EarthMoonProp_ForceModel.CentralBody = Earth;
-GMAT EarthMoonProp_ForceModel.PrimaryBodies = {Earth};
-GMAT EarthMoonProp_ForceModel.PointMasses = {Luna, Sun};
-GMAT EarthMoonProp_ForceModel.SRP = On;
-GMAT EarthMoonProp_ForceModel.RelativisticCorrection = Off;
-GMAT EarthMoonProp_ForceModel.ErrorControl = RSSStep;
-GMAT EarthMoonProp_ForceModel.GravityField.Earth.Degree = 10;
-GMAT EarthMoonProp_ForceModel.GravityField.Earth.Order = 10;
-GMAT EarthMoonProp_ForceModel.GravityField.Earth.PotentialFile = 'JGM2.cof';
-GMAT EarthMoonProp_ForceModel.Drag = None;
+Create Spacecraft MoonSat;
+GMAT MoonSat.DateFormat         = UTCGregorian;
+GMAT MoonSat.Epoch              = '15 Jul 2022 01:07:06.978';
+GMAT MoonSat.CoordinateSystem   = EarthMJ2000Eq;
+GMAT MoonSat.DisplayStateType   = Keplerian;
+GMAT MoonSat.SMA                = 6563.000000000004;
+GMAT MoonSat.ECC                = 0.001;
+GMAT MoonSat.INC                = 28.7;
+GMAT MoonSat.RAAN               = 199.53225783;
+GMAT MoonSat.AOP                = 358.309113604;
+GMAT MoonSat.TA                 = 0;
+GMAT MoonSat.DryMass            = 850;
+GMAT MoonSat.Cd                 = 2.2;
+GMAT MoonSat.Cr                 = 1.8;
+GMAT MoonSat.DragArea           = 15;
+GMAT MoonSat.SRPArea            = 20;
 
 %----------------------------------------
-%---------- Propagator
+%  Force Model — Earth + Moon + Sun gravity, SRP
 %----------------------------------------
 
-Create Propagator EarthMoonProp;
-GMAT EarthMoonProp.FM = EarthMoonProp_ForceModel;
-GMAT EarthMoonProp.Type = RungeKutta89;
-GMAT EarthMoonProp.InitialStepSize = 60;
-GMAT EarthMoonProp.Accuracy = 1e-011;
-GMAT EarthMoonProp.MinStep = 0.001;
-GMAT EarthMoonProp.MaxStep = 2700;
-GMAT EarthMoonProp.MaxStepAttempts = 50;
-GMAT EarthMoonProp.StopIfAccuracyIsViolated = true;
+Create ForceModel NearEarthProp_ForceModel;
+GMAT NearEarthProp_ForceModel.CentralBody            = Earth;
+GMAT NearEarthProp_ForceModel.PointMasses            = {Earth, Sun, Luna};
+GMAT NearEarthProp_ForceModel.Drag                   = None;
+GMAT NearEarthProp_ForceModel.SRP                    = On;
+GMAT NearEarthProp_ForceModel.RelativisticCorrection = Off;
+GMAT NearEarthProp_ForceModel.ErrorControl           = RSSStep;
+GMAT NearEarthProp_ForceModel.SRP.Flux               = 1367;
+GMAT NearEarthProp_ForceModel.SRP.Nominal_Sun        = 149597870.691;
 
 %----------------------------------------
-%---------- Coordinate Systems
+%  Propagator — RK89
 %----------------------------------------
 
-Create CoordinateSystem MoonInertial;
-GMAT MoonInertial.Origin = Luna;
-GMAT MoonInertial.Axes = BodyInertial;
+Create Propagator NearEarthProp;
+GMAT NearEarthProp.FM                       = NearEarthProp_ForceModel;
+GMAT NearEarthProp.Type                     = RungeKutta89;
+GMAT NearEarthProp.InitialStepSize          = 60;
+GMAT NearEarthProp.Accuracy                 = 9.999999999999999e-012;
+GMAT NearEarthProp.MinStep                  = 0.001;
+GMAT NearEarthProp.MaxStep                  = 160000;
+GMAT NearEarthProp.MaxStepAttempts          = 50;
+GMAT NearEarthProp.StopIfAccuracyIsViolated = true;
 
 %----------------------------------------
-%---------- Report File (Data Output)
+%  TOI Burn — VNB frame, Python randomizes Element1/2/3
 %----------------------------------------
 
-Create ReportFile MissionReport;
-GMAT MissionReport.SolverIterations = Current;
-GMAT MissionReport.UpperLeft = [ 0 0 ];
-GMAT MissionReport.Filename = 'output/mission_report.txt';  % [MC_PARAM]
-GMAT MissionReport.Precision = 16;
-GMAT MissionReport.WriteHeaders = true;
-GMAT MissionReport.LeftJustify = On;
-GMAT MissionReport.ZeroFill = On;
-GMAT MissionReport.ColumnWidth = 23;
-GMAT MissionReport.WriteReport = true;
-GMAT MissionReport.Add = {
-    Sat.ElapsedSecs,
-    Sat.EarthMJ2000Eq.X, Sat.EarthMJ2000Eq.Y, Sat.EarthMJ2000Eq.Z,
-    Sat.EarthMJ2000Eq.VX, Sat.EarthMJ2000Eq.VY, Sat.EarthMJ2000Eq.VZ,
-    Luna.EarthMJ2000Eq.X, Luna.EarthMJ2000Eq.Y, Luna.EarthMJ2000Eq.Z,
-    Sat.FuelTank.FuelMass
-};
+Create ImpulsiveBurn TOI;
+GMAT TOI.CoordinateSystem   = Local;
+GMAT TOI.Origin             = Earth;
+GMAT TOI.Axes               = VNB;
+GMAT TOI.Element1           = 3.13320815411;
+GMAT TOI.Element2           = 0.0;
+GMAT TOI.Element3           = 0.0;
+GMAT TOI.DecrementMass      = true;
+GMAT TOI.Isp                = 300;
+GMAT TOI.GravitationalAccel = 9.81;
 
 %----------------------------------------
-%---------- Mission Sequence
+%  Reports — Time-series + Final state
+%----------------------------------------
+
+Create ReportFile TransferReport;
+GMAT TransferReport.SolverIterations = None;
+GMAT TransferReport.Filename         = 'transfer_timeseries.csv';
+GMAT TransferReport.WriteHeaders     = true;
+GMAT TransferReport.Delimiter        = ',';
+GMAT TransferReport.Add              = {MoonSat.ElapsedDays, MoonSat.EarthMJ2000Eq.X, MoonSat.EarthMJ2000Eq.Y, MoonSat.EarthMJ2000Eq.Z, MoonSat.EarthMJ2000Eq.VX, MoonSat.EarthMJ2000Eq.VY, MoonSat.EarthMJ2000Eq.VZ, MoonSat.Earth.RMAG, MoonSat.Luna.RMAG, MoonSat.Earth.ECC, MoonSat.Earth.SMA};
+
+Create ReportFile FinalStateReport;
+GMAT FinalStateReport.SolverIterations = None;
+GMAT FinalStateReport.Filename         = 'final_state.csv';
+GMAT FinalStateReport.WriteHeaders     = true;
+GMAT FinalStateReport.Delimiter        = ',';
+GMAT FinalStateReport.Add              = {MoonSat.ElapsedDays, MoonSat.Luna.ECC, MoonSat.Luna.RMAG, MoonSat.Luna.RadPer, MoonSat.Luna.SMA};
+
+%----------------------------------------
+%  Mission Sequence — burn + propagate 6 days
 %----------------------------------------
 
 BeginMissionSequence;
 
-% Propagate for 5 days (432000 seconds)
-Propagate EarthMoonProp(Sat) {Sat.ElapsedDays = 5};
+Maneuver TOI(MoonSat);
+
+%  Propagate 6 days. Stop early if within 500 km of Moon.
+Propagate NearEarthProp(MoonSat) {MoonSat.ElapsedDays = 6, MoonSat.Luna.RMAG = 500};
+
+%  Write final state for labeling
+Report FinalStateReport MoonSat.ElapsedDays MoonSat.Luna.ECC MoonSat.Luna.RMAG MoonSat.Luna.RadPer MoonSat.Luna.SMA;

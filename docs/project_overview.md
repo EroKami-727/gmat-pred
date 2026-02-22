@@ -8,7 +8,10 @@ When running thousands of Monte Carlo simulations (randomized trial-and-error ru
 ## Our Solution
 We are building an "Early Exit" system using Machine Learning (ML). 
 
-Instead of replacing GMAT, we are giving it a "smart spectator." As GMAT starts calculating a simulation, our ML model watches the first 20% to 40% of the flight. If the ML recognizes the mathematical pattern of a doomed flight, it steps in and says: **"Stop calculating. This is going to crash. Terminate the simulation immediately."**
+Instead of replacing GMAT, we are giving it a "smart spectator." As GMAT starts calculating a simulation, our ML model watches the first 20% to 40% of the flight. If the ML recognizes the mathematical pattern of a doomed flight (one that will miss the Moon or crash), it steps in and says: **"Stop calculating. This is going to crash. Terminate the simulation immediately."**
+
+> [!IMPORTANT]
+> This research focuses on **ballistic trajectories**. A "successful" mission is one that naturally encounters the Moon at the correct altitude. We are essentially predicting if the initial launch "aim" was accurate enough to hit the target corridor.
 
 By trading a tiny bit of accuracy, we can skip the remaining 60% to 80% of the math for failing missions. 
 
@@ -24,9 +27,9 @@ By trading a tiny bit of accuracy, we can skip the remaining 60% to 80% of the m
 * **Hardware Optimization:** Multiprocessing (using all 14 cores of an i7 processor)
 
 ## Project Goals
-1. **Data Generation:** Build a dataset of thousands of GMAT Earth-Moon transfers.
-2. **Behavioral Prediction:** Train deep learning models to predict failure from early-flight telemetry.
-3. **Execution Pipeline:** Implement a real-time monitor that stops GMAT simulations upon failure detection.
+2. **Data Generation [✓ COMPLETE]:** Built a high-performance, multi-threaded pipeline using 3-body RK4 physics to generate thousands of physically accurate Earth-Moon transfers via Monte Carlo dispersion analysis.
+3. **Behavioral Prediction:** Train deep learning models to predict failure from early-flight telemetry.
+4. **Execution Pipeline:** Implement a real-time monitor that stops GMAT simulations upon failure detection.
 4. **Research & Optimization:** Conduct comparative studies on architectures and early-exit thresholds.
 
 > [!TIP]

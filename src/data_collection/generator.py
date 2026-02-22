@@ -1,119 +1,130 @@
 """
-Monte Carlo Mission Parameter Generator
-========================================
-Creates randomized sets of orbital parameters for GMAT simulations.
-Deliberately uses wide variance so ~30-40% of generated missions fail
-(crash into Earth, escape to infinity, or run out of fuel).
+Monte Carlo Dispersion Generator
+==================================
+Generates mission parameters by applying small random dispersions
+around a FIXED nominal lunar transfer solution.
+
+Nominal values come from a converged GMAT targeter run.
+Dispersions represent realistic launch vehicle errors.
+
+This is how NASA Monte Carlo dispersion analysis works:
+  - Run targeter ONCE to find the nominal solution
+  - Apply random perturbations to simulate real-world uncertainty
+  - Some dispersions miss Moon naturally = physically real failures
 """
+
+from __future__ import annotations
 
 import numpy as np
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any
 
 
-# ---------------------------------------------------------------------------
-# Physical constants
-# ---------------------------------------------------------------------------
-EARTH_RADIUS_KM = 6371.0          # Mean Earth radius
-EARTH_MU = 398600.4418            # GM of Earth  (km³/s²)
-MOON_DISTANCE_KM = 384400.0      # Average Earth-Moon distance
+# ═══════════════════════════════════════════════════════════════════════════
+# NOMINAL SOLUTION — from converged GMAT targeter
+# ═══════════════════════════════════════════════════════════════════════════
+
+NOMINAL = {
+    "TOI_V": 3.2337,           # km/s — prograde burn magnitude
+    "TOI_N": 0.0,              # km/s — normal component
+    "TOI_B": 0.0,              # km/s — binormal component
+    "RAAN":  221.33,           # deg  — Right Ascension of Ascending Node
+    "AOP":   358.309113604,    # deg  — Argument of Periapsis
+    "INC":   28.7,             # deg  — Inclination
+    "SMA":   6563.0,           # km   — Semi-major axis (LEO parking orbit)
+    "ECC":   0.001,            # —    — Near-circular parking orbit
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DISPERSION RANGES — (min, max) uniform bounds
+# These simulate realistic launch vehicle errors and orbital uncertainties
+# ═══════════════════════════════════════════════════════════════════════════
+
+DISPERSION = {
+    "dv_V":  (-0.006,  0.006),   # km/s — TOI burn magnitude error
+    "dv_N":  (-0.003,  0.003),   # km/s — out-of-plane burn error
+    "dv_B":  (-0.003,  0.003),   # km/s — binormal burn error
+    "RAAN":  (-0.6,    0.6),     # deg  — orbital plane error
+    "AOP":   (-0.6,    0.6),     # deg  — periapsis location error
+    "INC":   (-0.1,    0.1),     # deg  — inclination error
+}
 
 
 @dataclass
 class MissionParams:
-    """Parameters for a single GMAT simulation run."""
-    mission_id: int
+    """Parameters for a single Monte Carlo simulation run."""
+    sim_id: int
 
-    # Keplerian orbital elements
-    sma: float       # Semi-major axis (km)
-    ecc: float       # Eccentricity
-    inc: float       # Inclination (deg)
-    raan: float      # Right Ascension of Ascending Node (deg)
-    aop: float       # Argument of Periapsis (deg)
-    ta: float        # True Anomaly (deg)
+    # Absolute values (nominal + dispersion)
+    TOI_V: float    # km/s
+    TOI_N: float    # km/s
+    TOI_B: float    # km/s
+    RAAN:  float    # deg
+    AOP:   float    # deg
+    INC:   float    # deg
+    SMA:   float    # km
+    ECC:   float    # —
 
-    # Spacecraft properties
-    dry_mass: float  # kg
-    fuel_mass: float # kg
-
-    # Simulation duration
-    prop_days: float # Propagation time (days)
+    # Offsets from nominal (for analysis)
+    dv_V_offset:  float
+    dv_N_offset:  float
+    dv_B_offset:  float
+    RAAN_offset:  float
+    AOP_offset:   float
+    INC_offset:   float
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
 def generate_inputs(
-    num_missions: int = 200,
+    num_missions: int = 3000,
     seed: int | None = 42,
 ) -> List[MissionParams]:
     """
-    Generate `num_missions` randomized parameter sets.
+    Generate `num_missions` dispersed parameter sets around the nominal solution.
 
-    The ranges are tuned so that roughly 30-40 % of missions end in failure:
-    - Periapsis below Earth surface  → crash
-    - Hyperbolic escape (ecc >= 1)    → lost in space
-    - Very high orbits that never reach the Moon usefully
+    Each parameter = nominal_value + uniform_random(dispersion_min, dispersion_max)
 
     Parameters
     ----------
     num_missions : int
-        How many parameter sets to create.
+        Number of Monte Carlo runs to generate.
     seed : int or None
         RNG seed for reproducibility.
 
     Returns
     -------
     list[MissionParams]
-        Each entry is a full set of inputs for one simulation.
     """
     rng = np.random.default_rng(seed)
-
     missions: List[MissionParams] = []
 
     for i in range(num_missions):
-        # --- Orbital geometry -------------------------------------------
-        # SMA: mix of LEO (6500-8000), MEO (8000-20000),
-        #       high-orbit / trans-lunar (20000-420000)
-        orbit_class = rng.choice(["LEO", "MEO", "HIGH"], p=[0.35, 0.30, 0.35])
-        if orbit_class == "LEO":
-            sma = rng.uniform(6400, 8000)        # some below surface → crash
-        elif orbit_class == "MEO":
-            sma = rng.uniform(8000, 20000)
-        else:
-            sma = rng.uniform(20000, 420000)
-
-        # Eccentricity: mostly low, but sometimes dangerously high
-        ecc = float(np.clip(rng.beta(1.5, 5.0) * 1.05, 0.0, 0.999))
-
-        # Angular elements: uniform
-        inc  = rng.uniform(0, 180)
-        raan = rng.uniform(0, 360)
-        aop  = rng.uniform(0, 360)
-        ta   = rng.uniform(0, 360)
-
-        # --- Spacecraft --------------------------------------------------
-        dry_mass  = rng.uniform(500, 2000)
-        fuel_mass = rng.uniform(50, 500)
-
-        # --- Propagation -------------------------------------------------
-        # 1–10 days (longer for high orbits)
-        if orbit_class == "HIGH":
-            prop_days = rng.uniform(3, 10)
-        else:
-            prop_days = rng.uniform(1, 5)
+        # Sample dispersions
+        d_V    = rng.uniform(*DISPERSION["dv_V"])
+        d_N    = rng.uniform(*DISPERSION["dv_N"])
+        d_B    = rng.uniform(*DISPERSION["dv_B"])
+        d_RAAN = rng.uniform(*DISPERSION["RAAN"])
+        d_AOP  = rng.uniform(*DISPERSION["AOP"])
+        d_INC  = rng.uniform(*DISPERSION["INC"])
 
         missions.append(MissionParams(
-            mission_id=i,
-            sma=round(sma, 4),
-            ecc=round(ecc, 6),
-            inc=round(inc, 4),
-            raan=round(raan, 4),
-            aop=round(aop, 4),
-            ta=round(ta, 4),
-            dry_mass=round(dry_mass, 2),
-            fuel_mass=round(fuel_mass, 2),
-            prop_days=round(prop_days, 4),
+            sim_id=i,
+            TOI_V=NOMINAL["TOI_V"] + d_V,
+            TOI_N=NOMINAL["TOI_N"] + d_N,
+            TOI_B=NOMINAL["TOI_B"] + d_B,
+            RAAN=NOMINAL["RAAN"]   + d_RAAN,
+            AOP=NOMINAL["AOP"]     + d_AOP,
+            INC=NOMINAL["INC"]     + d_INC,
+            SMA=NOMINAL["SMA"],
+            ECC=NOMINAL["ECC"],
+            dv_V_offset=round(d_V, 8),
+            dv_N_offset=round(d_N, 8),
+            dv_B_offset=round(d_B, 8),
+            RAAN_offset=round(d_RAAN, 8),
+            AOP_offset=round(d_AOP, 8),
+            INC_offset=round(d_INC, 8),
         ))
 
     return missions
@@ -125,4 +136,6 @@ def generate_inputs(
 if __name__ == "__main__":
     params = generate_inputs(num_missions=5)
     for p in params:
-        print(p)
+        print(f"sim {p.sim_id}: TOI_V={p.TOI_V:.6f} (Δ{p.dv_V_offset:+.6f})  "
+              f"RAAN={p.RAAN:.4f} (Δ{p.RAAN_offset:+.4f})  "
+              f"AOP={p.AOP:.4f} (Δ{p.AOP_offset:+.4f})")

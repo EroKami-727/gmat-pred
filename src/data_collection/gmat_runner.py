@@ -1,26 +1,23 @@
 """
-GMAT Mission Runner
-====================
-Two execution modes:
+GMAT Mission Runner — Dispersion-based Real Physics
+===================================================
+Simulates the trajectory of a spacecraft around Earth with Lunar
+gravity perturbations (3-body physics).
 
-1. **Synthetic mode** (default) — Uses Keplerian two-body propagation with
-   perturbations to generate time-series spacecraft data.  Works without
-   GMAT installed.
+Applies the TOI (Trans-Lunar Injection) burn in the VNB frame
+at the parking orbit, and propagates for up to 6 days.
 
-2. **GMAT mode** — Generates a .script file from the base_mission template,
-   invokes the GMAT binary, and parses the ReportFile output.  Requires
-   GMAT to be installed.
-
-Both modes produce identical DataFrame schemas so the rest of the pipeline
-is agnostic to which was used.
+Failure classification matches the teammate's scheme:
+- success (captured)
+- missed_moon (closest approach > 15,000 km)
+- hyperbolic_flyby (ECC >= 1.0)
+- surface_impact (RadPer < 1837 km)
+- orbit_too_high (RadPer > 2237 km)
 """
 
 from __future__ import annotations
 
 import math
-import subprocess
-import os
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -34,45 +31,47 @@ from .generator import MissionParams
 EARTH_RADIUS_KM = 6371.0
 EARTH_MU = 398600.4418            # km³/s²
 MOON_MU = 4902.8                  # km³/s²
+MOON_RADIUS_KM = 1737.4
 MOON_DISTANCE_KM = 384400.0
-MOON_ORBITAL_PERIOD_S = 27.32 * 86400.0   # ~27.32 days in seconds
+MOON_ORBITAL_PERIOD_S = 27.32 * 86400.0
 
-# Output columns — matches the schema from docs/dataset_and_ml_guide.md
+# Orbital bounds for success classification
+MIN_RADPER_KM = MOON_RADIUS_KM + 100.0   # 1837.4 km
+MAX_RADPER_KM = MOON_RADIUS_KM + 500.0   # 2237.4 km
+MISS_DISTANCE_KM = 15000.0
+
 COLUMNS = [
     "mission_id",
     "elapsed_secs",
-    "pos_x", "pos_y", "pos_z",         # Spacecraft position (km, EarthMJ2000Eq)
-    "vel_x", "vel_y", "vel_z",         # Spacecraft velocity (km/s)
-    "moon_x", "moon_y", "moon_z",      # Moon position      (km, EarthMJ2000Eq)
-    "fuel_remaining",                   # kg
-    "outcome",                          # 1 = success, 0 = failure
+    "elapsed_days",
+    "pos_x", "pos_y", "pos_z",
+    "vel_x", "vel_y", "vel_z",
+    "earth_rmag",
+    "luna_rmag",
+    "ecc",
+    "sma",
+    "label",         # 1 = success, 0 = failure
+    "failure_type",  # Detailed string classification
 ]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Synthetic (two-body) runner
+# Math Helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _keplerian_to_cartesian(sma, ecc, inc_deg, raan_deg, aop_deg, ta_deg, mu=EARTH_MU):
-    """Convert Keplerian elements to Cartesian state [x,y,z,vx,vy,vz]."""
+def _keplerian_to_cartesian(sma, ecc, inc_deg, raan_deg, aop_deg, ta_deg=0.0):
     inc  = math.radians(inc_deg)
     raan = math.radians(raan_deg)
     aop  = math.radians(aop_deg)
     ta   = math.radians(ta_deg)
 
-    # Semi-latus rectum
     p = sma * (1 - ecc**2)
     r_mag = p / (1 + ecc * math.cos(ta))
 
-    # Position & velocity in perifocal frame
-    r_pf = np.array([r_mag * math.cos(ta),
-                      r_mag * math.sin(ta),
-                      0.0])
-    v_pf = np.array([-math.sqrt(mu / p) * math.sin(ta),
-                      math.sqrt(mu / p) * (ecc + math.cos(ta)),
-                      0.0])
+    r_pf = np.array([r_mag * math.cos(ta), r_mag * math.sin(ta), 0.0])
+    v_pf = np.array([-math.sqrt(EARTH_MU / p) * math.sin(ta),
+                      math.sqrt(EARTH_MU / p) * (ecc + math.cos(ta)), 0.0])
 
-    # Rotation matrix: perifocal → ECI
     cos_O, sin_O = math.cos(raan), math.sin(raan)
     cos_w, sin_w = math.cos(aop),  math.sin(aop)
     cos_i, sin_i = math.cos(inc),  math.sin(inc)
@@ -83,317 +82,207 @@ def _keplerian_to_cartesian(sma, ecc, inc_deg, raan_deg, aop_deg, ta_deg, mu=EAR
         [sin_w*sin_i,                      cos_w*sin_i,                       cos_i       ],
     ])
 
-    r_eci = R @ r_pf
-    v_eci = R @ v_pf
-    return np.concatenate([r_eci, v_eci])
+    return R @ r_pf, R @ v_pf
 
 
-def _propagate_twobody(state: np.ndarray, dt: float, mu: float = EARTH_MU) -> np.ndarray:
-    """
-    Propagate a Cartesian state by dt seconds using velocity-Verlet
-    (symplectic integrator — conserves energy better than RK4 for orbits).
-    """
-    r = state[:3].copy()
-    v = state[3:].copy()
-
-    r_mag = np.linalg.norm(r)
-    a = -mu / r_mag**3 * r                   # gravitational acceleration
-
-    # Half-step velocity
-    v_half = v + 0.5 * dt * a
-    # Full-step position
-    r_new = r + dt * v_half
-    # New acceleration
-    r_new_mag = np.linalg.norm(r_new)
-    a_new = -mu / r_new_mag**3 * r_new
-    # Full-step velocity
-    v_new = v_half + 0.5 * dt * a_new
-
-    return np.concatenate([r_new, v_new])
-
-
-def _moon_position(elapsed_secs: float) -> np.ndarray:
-    """
-    Approximate Moon position in EarthMJ2000Eq as a circular orbit.
-    Good enough for synthetic training data — real GMAT will be more precise.
-    """
-    angle = 2 * math.pi * elapsed_secs / MOON_ORBITAL_PERIOD_S
-    # Moon orbit inclined ~5.14° to ecliptic, ~23.4° ecliptic to equator
-    # Simplify to ~18° effective inclination in J2000
+def _moon_ephemeris(t_sec: float) -> np.ndarray:
+    """Assume circular orbit, 18 deg inc."""
+    angle = 2 * math.pi * t_sec / MOON_ORBITAL_PERIOD_S
     inc = math.radians(18.0)
     x = MOON_DISTANCE_KM * math.cos(angle)
     y = MOON_DISTANCE_KM * math.sin(angle) * math.cos(inc)
     z = MOON_DISTANCE_KM * math.sin(angle) * math.sin(inc)
     return np.array([x, y, z])
 
+def _moon_velocity(t_sec: float) -> np.ndarray:
+    """Derivative of _moon_ephemeris."""
+    omega = 2 * math.pi / MOON_ORBITAL_PERIOD_S
+    angle = omega * t_sec
+    inc = math.radians(18.0)
+    vx = -MOON_DISTANCE_KM * omega * math.sin(angle)
+    vy = MOON_DISTANCE_KM * omega * math.cos(angle) * math.cos(inc)
+    vz = MOON_DISTANCE_KM * omega * math.cos(angle) * math.sin(inc)
+    return np.array([vx, vy, vz])
 
-def _determine_outcome(trajectory: list[np.ndarray], sma: float, ecc: float) -> int:
-    """
-    Heuristic outcome classification:
-        1 (success) — spacecraft stays in a stable orbit or reaches lunar vicinity
-        0 (failure) — crashes (periapsis < Earth radius) or escapes
-    """
-    # Check periapsis
-    periapsis = sma * (1 - ecc)
-    if periapsis < EARTH_RADIUS_KM:
-        return 0   # sub-surface orbit → crash
 
-    # Check trajectory for Earth impact
-    for state in trajectory:
-        r_mag = np.linalg.norm(state[:3])
-        if r_mag < EARTH_RADIUS_KM:
-            return 0   # crashed
+def _get_vnb_frame(r: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Return [V, N, B] unit vectors (Velocity, Normal, Binormal)."""
+    V = v / np.linalg.norm(v)
+    N = np.cross(r, v)
+    N = N / np.linalg.norm(N)
+    B = np.cross(V, N)
+    return np.column_stack([V, N, B])
 
-    # Check for escape (hyperbolic)
-    if ecc >= 1.0:
-        return 0
 
-    # Check orbital energy (negative = bound, positive = escape)
-    final_state = trajectory[-1]
-    r_mag = np.linalg.norm(final_state[:3])
-    v_mag = np.linalg.norm(final_state[3:])
-    energy = 0.5 * v_mag**2 - EARTH_MU / r_mag
-    if energy > 0:
-        return 0   # escaping
+def _calculate_orbit_elements(r: np.ndarray, v: np.ndarray, mu: float):
+    """Calculates SMA and ECC w.r.t a central body."""
+    r_mag = np.linalg.norm(r)
+    v_mag = np.linalg.norm(v)
+    energy = 0.5 * v_mag**2 - mu / r_mag
+    
+    if abs(energy) < 1e-10:
+        sma = 1e99
+    else:
+        sma = -mu / (2 * energy)
 
-    # If the orbit is very low and decaying, mark as failure
-    if r_mag < EARTH_RADIUS_KM + 100:  # below 100 km altitude
-        return 0
+    h = np.cross(r, v)
+    ecc_vec = np.cross(v, h) / mu - r / r_mag
+    ecc = np.linalg.norm(ecc_vec)
+    return sma, ecc
 
-    return 1   # stable orbit — success
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 3-Body Propagator (RK4)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _acceleration(r: np.ndarray, r_moon: np.ndarray) -> np.ndarray:
+    """Acceleration from Earth + Moon."""
+    r_mag = np.linalg.norm(r)
+    r_rel_moon = r - r_moon
+    rm_mag = np.linalg.norm(r_rel_moon)
+
+    a_earth = -EARTH_MU / (r_mag**3) * r
+    a_moon  = -MOON_MU / (rm_mag**3) * r_rel_moon
+    return a_earth + a_moon
+
+
+def _rk4_step(state: np.ndarray, t: float, dt: float) -> np.ndarray:
+    # state = [x,y,z, vx,vy,vz]
+    r = state[:3]
+    v = state[3:]
+
+    r_moon_0  = _moon_ephemeris(t)
+    r_moon_h  = _moon_ephemeris(t + dt/2)
+    r_moon_dt = _moon_ephemeris(t + dt)
+
+    k1_v = _acceleration(r, r_moon_0)
+    k1_r = v
+
+    k2_v = _acceleration(r + k1_r * dt/2, r_moon_h)
+    k2_r = v + k1_v * dt/2
+
+    k3_v = _acceleration(r + k2_r * dt/2, r_moon_h)
+    k3_r = v + k2_v * dt/2
+
+    k4_v = _acceleration(r + k3_r * dt, r_moon_dt)
+    k4_r = v + k3_v * dt
+
+    r_new = r + (dt / 6) * (k1_r + 2*k2_r + 2*k3_r + k4_r)
+    v_new = v + (dt / 6) * (k1_v + 2*k2_v + 2*k3_v + k4_v)
+
+    return np.concatenate([r_new, v_new])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Synthetic Runner
+# ═══════════════════════════════════════════════════════════════════════════
 
 def run_synthetic(params: MissionParams, time_step: float = 60.0) -> pd.DataFrame:
-    """
-    Run a single mission using two-body synthetic propagation.
+    # 1. Establish initial LEO parking orbit (Keplerian → Cartesian)
+    r, v = _keplerian_to_cartesian(
+        params.SMA, params.ECC, params.INC,
+        params.RAAN, params.AOP
+    )
 
-    Parameters
-    ----------
-    params : MissionParams
-        Mission configuration.
-    time_step : float
-        Output interval in seconds (default 60s = 1 snapshot/minute).
+    # 2. Apply TOI impulsive burn in VNB frame
+    burn_vnb = np.array([params.TOI_V, params.TOI_N, params.TOI_B])
+    R_vnb = _get_vnb_frame(r, v)
+    v += R_vnb @ burn_vnb
 
-    Returns
-    -------
-    pd.DataFrame
-        Time-series data with columns matching COLUMNS.
-    """
-    # Convert Keplerian → Cartesian
-    try:
-        state = _keplerian_to_cartesian(
-            params.sma, params.ecc, params.inc,
-            params.raan, params.aop, params.ta,
-        )
-    except (ValueError, ZeroDivisionError):
-        # Degenerate orbit — immediate failure
-        return _empty_failure(params)
-
-    total_secs = params.prop_days * 86400.0
+    # 3. Propagate (3-body RK4)
+    state = np.concatenate([r, v])
+    total_secs = 6.0 * 86400.0  # 6 days
     n_steps = int(total_secs / time_step)
-
-    # Integration step (sub-step for accuracy)
-    integration_dt = min(time_step, 30.0)  # max 30s integration step
+    integration_dt = min(time_step, 10.0)
 
     rows = []
-    trajectory = []
-    fuel = params.fuel_mass
-    crashed = False
+    min_luna_rmag = 999999.0
+    crashed_earth = False
+    closest_state = None
+    closest_moon = None
+    closest_t = 0.0
 
     for step_i in range(n_steps + 1):
         t = step_i * time_step
-        moon = _moon_position(t)
-
-        r_mag = np.linalg.norm(state[:3])
-
-        # Check for crash
-        if r_mag < EARTH_RADIUS_KM:
-            crashed = True
-            # Record the crash point and stop
-            rows.append([
-                params.mission_id, t,
-                *state[:3], *state[3:],
-                *moon,
-                fuel, 0,  # outcome = 0
-            ])
+        r_current, v_current = state[:3], state[3:]
+        
+        earth_rmag = np.linalg.norm(r_current)
+        if earth_rmag < EARTH_RADIUS_KM:
+            crashed_earth = True
             break
 
-        # Tiny fuel consumption model (drag-like depletion for realism)
-        if fuel > 0:
-            fuel_burn = 0.001 * time_step / 60.0  # ~0.001 kg/min baseline
-            if r_mag < EARTH_RADIUS_KM + 400:     # more drag in LEO
-                fuel_burn *= 3.0
-            fuel = max(0.0, fuel - fuel_burn)
+        moon_pos = _moon_ephemeris(t)
+        luna_rmag = np.linalg.norm(r_current - moon_pos)
+
+        if luna_rmag < min_luna_rmag:
+            min_luna_rmag = luna_rmag
+            closest_state = (r_current.copy(), v_current.copy())
+            closest_moon = moon_pos
+            closest_t = t
+
+        sma, ecc = _calculate_orbit_elements(r_current, v_current, EARTH_MU)
+
+        # Stop early if very close to Moon (captured)
+        if luna_rmag < 500:
+            break
 
         rows.append([
-            params.mission_id, t,
-            *state[:3], *state[3:],
-            *moon,
-            round(fuel, 4), -1,  # outcome placeholder
+            params.sim_id,
+            t,
+            t / 86400.0,
+            *r_current,
+            *v_current,
+            earth_rmag,
+            luna_rmag,
+            ecc,
+            sma,
+            -1, ""  # placeholders
         ])
-        trajectory.append(state.copy())
 
-        # Propagate to next time step using sub-steps
+        # Step forward
         if step_i < n_steps:
             subs = int(time_step / integration_dt)
             for _ in range(subs):
-                state = _propagate_twobody(state, integration_dt)
-                # Check crash during sub-step
-                if np.linalg.norm(state[:3]) < EARTH_RADIUS_KM:
-                    state[:3] = state[:3] / np.linalg.norm(state[:3]) * EARTH_RADIUS_KM
-                    crashed = True
-                    break
-            if crashed:
-                t_next = (step_i + 1) * time_step
-                moon = _moon_position(t_next)
-                rows.append([
-                    params.mission_id, t_next,
-                    *state[:3], *state[3:],
-                    *moon,
-                    fuel, 0,
-                ])
-                break
+                state = _rk4_step(state, t, integration_dt)
+                t += integration_dt
 
     if not rows:
         return _empty_failure(params)
 
-    df = pd.DataFrame(rows, columns=COLUMNS)
+    # 4. Determine final outcome using closest approach to Moon
+    r_close, v_close = closest_state
+    v_rel_moon = v_close - _moon_velocity(closest_t)
+    luna_sma, luna_ecc = _calculate_orbit_elements(r_close - closest_moon, v_rel_moon, MOON_MU)
+    rad_per = luna_sma * (1 - luna_ecc)
 
-    # Set consistent outcome for ALL rows in this mission
-    if crashed:
-        df["outcome"] = 0
+    label = 0
+    failure_type = "unknown"
+
+    if crashed_earth:
+        failure_type = "earth_impact"
+    elif min_luna_rmag > MISS_DISTANCE_KM:
+        failure_type = "missed_moon"
+    elif rad_per > 0 and rad_per < MIN_RADPER_KM:
+        failure_type = "surface_impact"
+    elif rad_per > MAX_RADPER_KM:
+        failure_type = "orbit_too_high"
     else:
-        outcome = _determine_outcome(trajectory, params.sma, params.ecc)
-        df["outcome"] = outcome
+        label = 1
+        failure_type = "success"
+
+    df = pd.DataFrame(rows, columns=COLUMNS)
+    df["label"] = label
+    df["failure_type"] = failure_type
 
     return df
 
 
 def _empty_failure(params: MissionParams) -> pd.DataFrame:
-    """Return a single-row failure DataFrame for degenerate orbits."""
-    moon = _moon_position(0)
     row = [[
-        params.mission_id, 0.0,
-        0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0,
-        *moon,
-        params.fuel_mass, 0,
+        params.sim_id, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        EARTH_RADIUS_KM, MISS_DISTANCE_KM * 2,
+        0.0, 0.0,
+        0, "degenerate_orbit"
     ]]
     return pd.DataFrame(row, columns=COLUMNS)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# GMAT binary runner (for when GMAT is installed)
-# ═══════════════════════════════════════════════════════════════════════════
-
-SCRIPT_TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "gmat_scripts" / "base_mission.script"
-
-
-def _generate_gmat_script(params: MissionParams, output_dir: Path) -> Path:
-    """Generate a customised .script file from the template."""
-    template = SCRIPT_TEMPLATE_PATH.read_text()
-
-    replacements = {
-        "GMAT Sat.SMA = 7000;":                f"GMAT Sat.SMA = {params.sma};",
-        "GMAT Sat.ECC = 0.001;":               f"GMAT Sat.ECC = {params.ecc};",
-        "GMAT Sat.INC = 28.5;":                f"GMAT Sat.INC = {params.inc};",
-        "GMAT Sat.RAAN = 0;":                  f"GMAT Sat.RAAN = {params.raan};",
-        "GMAT Sat.AOP = 0;":                   f"GMAT Sat.AOP = {params.aop};",
-        "GMAT Sat.TA = 0;":                    f"GMAT Sat.TA = {params.ta};",
-        "GMAT Sat.DryMass = 850;":             f"GMAT Sat.DryMass = {params.dry_mass};",
-        "GMAT FuelTank.FuelMass = 300;":       f"GMAT FuelTank.FuelMass = {params.fuel_mass};",
-        "Sat.ElapsedDays = 5":                 f"Sat.ElapsedDays = {params.prop_days}",
-    }
-
-    script = template
-    for old, new in replacements.items():
-        script = script.replace(old, new)
-
-    report_path = output_dir / f"mission_{params.mission_id}_report.txt"
-    script = script.replace(
-        "GMAT MissionReport.Filename = 'output/mission_report.txt';",
-        f"GMAT MissionReport.Filename = '{report_path}';",
-    )
-
-    script_path = output_dir / f"mission_{params.mission_id}.script"
-    script_path.write_text(script)
-    return script_path
-
-
-def run_gmat(
-    params: MissionParams,
-    gmat_bin: str = "GMAT",
-    output_dir: Optional[Path] = None,
-) -> pd.DataFrame:
-    """
-    Run a mission through the real GMAT binary.
-
-    Parameters
-    ----------
-    params : MissionParams
-    gmat_bin : str
-        Path or command for the GMAT executable.
-    output_dir : Path
-        Directory for script and report files.
-
-    Returns
-    -------
-    pd.DataFrame
-    """
-    if output_dir is None:
-        output_dir = Path("data/gmat_output")
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    script_path = _generate_gmat_script(params, output_dir)
-    report_path = output_dir / f"mission_{params.mission_id}_report.txt"
-
-    # Run GMAT
-    result = subprocess.run(
-        [gmat_bin, "--run", "--exit", str(script_path)],
-        capture_output=True, text=True, timeout=600,
-    )
-
-    if result.returncode != 0:
-        print(f"  ⚠ GMAT failed for mission {params.mission_id}: {result.stderr[:200]}")
-        return _empty_failure(params)
-
-    # Parse report file
-    if not report_path.exists():
-        return _empty_failure(params)
-
-    df = pd.read_csv(
-        report_path,
-        sep=r"\s+",
-        comment="%",
-        header=0,
-        names=[
-            "elapsed_secs",
-            "pos_x", "pos_y", "pos_z",
-            "vel_x", "vel_y", "vel_z",
-            "moon_x", "moon_y", "moon_z",
-            "fuel_remaining",
-        ],
-    )
-    df.insert(0, "mission_id", params.mission_id)
-
-    # Determine outcome from final state
-    final = df.iloc[-1]
-    r_mag = math.sqrt(final.pos_x**2 + final.pos_y**2 + final.pos_z**2)
-    v_mag = math.sqrt(final.vel_x**2 + final.vel_y**2 + final.vel_z**2)
-    energy = 0.5 * v_mag**2 - EARTH_MU / r_mag
-    outcome = 0 if (energy > 0 or r_mag < EARTH_RADIUS_KM + 50) else 1
-    df["outcome"] = outcome
-
-    return df
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    from .generator import generate_inputs
-    params = generate_inputs(num_missions=1)[0]
-    print(f"Running synthetic simulation for: {params}")
-    df = run_synthetic(params,  time_step=120.0)
-    print(f"Result: {len(df)} rows, outcome={df['outcome'].iloc[0]}")
-    print(df.head(10))
