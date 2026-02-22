@@ -24,8 +24,10 @@ By trading a tiny bit of accuracy, we can skip the remaining 60% to 80% of the m
 * **Hardware Optimization:** Multiprocessing (using all 14 cores of an i7 processor)
 
 ## Project Goals
-1. Generate a dataset of thousands of GMAT flights (both successes and failures).
-2. Train an LSTM neural network to predict the final outcome using only the early flight data.
-3. Build a pipeline that actually stops GMAT in real-time when a failure is predicted.
-4. we need to train with different model and compare them  on accuracy, false positive rate, inference speed, and training time and we need tp test many like not only 20 - 40 , like why 10 isnt sufficient 30 50    , Plot this curve. This answers: what is the minimum trajectory data needed for reliable failure prediction? That's a genuinely useful result for anyone running Monte Carlo simulations and  Statistical Rigor
-Run your experiments multiple times with different random seeds. Report mean and standard deviation of your results. Show your results are stable, not lucky. Reviewers will reject a paper that reports one lucky run.
+1. **Data Generation:** Build a dataset of thousands of GMAT Earth-Moon transfers.
+2. **Behavioral Prediction:** Train deep learning models to predict failure from early-flight telemetry.
+3. **Execution Pipeline:** Implement a real-time monitor that stops GMAT simulations upon failure detection.
+4. **Research & Optimization:** Conduct comparative studies on architectures and early-exit thresholds.
+
+> [!TIP]
+> See the detailed [Research Enhancement Plan](docs/research_plan.md) for specifics on architecture comparison, ablation studies, and statistical validation.
