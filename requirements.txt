@@ -1,8 +1,7 @@
 pandas
-torch
-streamlit
 numpy
-matplotlib
-scikit-learn
+scipy
+tqdm
 pyarrow
 fastparquet
+matplotlib

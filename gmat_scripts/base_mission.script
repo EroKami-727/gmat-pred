@@ -1,1 +1,105 @@
-% GMAT Base Mission Script Template
+%  GMAT Base Mission Script — Earth-to-Moon Transfer
+%  Template for Monte Carlo simulation runs.
+%  Parameters marked with [MC_PARAM] are overridden by the Python generator.
+%
+%  Reference: ddj116/gmat samples (Ex_HohmannTransfer, Tut_SimulatingAnOrbit)
+
+%----------------------------------------
+%---------- Spacecraft
+%----------------------------------------
+
+Create Spacecraft Sat;
+GMAT Sat.DateFormat = UTCGregorian;
+GMAT Sat.Epoch = '01 Jan 2025 00:00:00.000';   % [MC_PARAM]
+GMAT Sat.CoordinateSystem = EarthMJ2000Eq;
+GMAT Sat.DisplayStateType = Keplerian;
+GMAT Sat.SMA = 7000;                            % [MC_PARAM] Semi-Major Axis (km)
+GMAT Sat.ECC = 0.001;                           % [MC_PARAM] Eccentricity
+GMAT Sat.INC = 28.5;                            % [MC_PARAM] Inclination (deg)
+GMAT Sat.RAAN = 0;                              % [MC_PARAM] Right Ascension (deg)
+GMAT Sat.AOP = 0;                               % [MC_PARAM] Arg of Periapsis (deg)
+GMAT Sat.TA = 0;                                % [MC_PARAM] True Anomaly (deg)
+GMAT Sat.DryMass = 850;                         % [MC_PARAM] Dry Mass (kg)
+GMAT Sat.Cd = 2.2;
+GMAT Sat.Cr = 1.8;
+GMAT Sat.DragArea = 15;
+GMAT Sat.SRPArea = 1;
+GMAT Sat.Id = 'MCSat';
+GMAT Sat.Attitude = CoordinateSystemFixed;
+
+%  Fuel tank
+Create ChemicalTank FuelTank;
+GMAT FuelTank.FuelMass = 300;                   % [MC_PARAM] Fuel Mass (kg)
+GMAT FuelTank.Pressure = 1500;
+GMAT FuelTank.Temperature = 20;
+GMAT FuelTank.Volume = 0.75;
+GMAT Sat.Tanks = {FuelTank};
+
+%----------------------------------------
+%---------- Force Model
+%----------------------------------------
+
+Create ForceModel EarthMoonProp_ForceModel;
+GMAT EarthMoonProp_ForceModel.CentralBody = Earth;
+GMAT EarthMoonProp_ForceModel.PrimaryBodies = {Earth};
+GMAT EarthMoonProp_ForceModel.PointMasses = {Luna, Sun};
+GMAT EarthMoonProp_ForceModel.SRP = On;
+GMAT EarthMoonProp_ForceModel.RelativisticCorrection = Off;
+GMAT EarthMoonProp_ForceModel.ErrorControl = RSSStep;
+GMAT EarthMoonProp_ForceModel.GravityField.Earth.Degree = 10;
+GMAT EarthMoonProp_ForceModel.GravityField.Earth.Order = 10;
+GMAT EarthMoonProp_ForceModel.GravityField.Earth.PotentialFile = 'JGM2.cof';
+GMAT EarthMoonProp_ForceModel.Drag = None;
+
+%----------------------------------------
+%---------- Propagator
+%----------------------------------------
+
+Create Propagator EarthMoonProp;
+GMAT EarthMoonProp.FM = EarthMoonProp_ForceModel;
+GMAT EarthMoonProp.Type = RungeKutta89;
+GMAT EarthMoonProp.InitialStepSize = 60;
+GMAT EarthMoonProp.Accuracy = 1e-011;
+GMAT EarthMoonProp.MinStep = 0.001;
+GMAT EarthMoonProp.MaxStep = 2700;
+GMAT EarthMoonProp.MaxStepAttempts = 50;
+GMAT EarthMoonProp.StopIfAccuracyIsViolated = true;
+
+%----------------------------------------
+%---------- Coordinate Systems
+%----------------------------------------
+
+Create CoordinateSystem MoonInertial;
+GMAT MoonInertial.Origin = Luna;
+GMAT MoonInertial.Axes = BodyInertial;
+
+%----------------------------------------
+%---------- Report File (Data Output)
+%----------------------------------------
+
+Create ReportFile MissionReport;
+GMAT MissionReport.SolverIterations = Current;
+GMAT MissionReport.UpperLeft = [ 0 0 ];
+GMAT MissionReport.Filename = 'output/mission_report.txt';  % [MC_PARAM]
+GMAT MissionReport.Precision = 16;
+GMAT MissionReport.WriteHeaders = true;
+GMAT MissionReport.LeftJustify = On;
+GMAT MissionReport.ZeroFill = On;
+GMAT MissionReport.ColumnWidth = 23;
+GMAT MissionReport.WriteReport = true;
+GMAT MissionReport.Add = {
+    Sat.ElapsedSecs,
+    Sat.EarthMJ2000Eq.X, Sat.EarthMJ2000Eq.Y, Sat.EarthMJ2000Eq.Z,
+    Sat.EarthMJ2000Eq.VX, Sat.EarthMJ2000Eq.VY, Sat.EarthMJ2000Eq.VZ,
+    Luna.EarthMJ2000Eq.X, Luna.EarthMJ2000Eq.Y, Luna.EarthMJ2000Eq.Z,
+    Sat.FuelTank.FuelMass
+};
+
+%----------------------------------------
+%---------- Mission Sequence
+%----------------------------------------
+
+BeginMissionSequence;
+
+% Propagate for 5 days (432000 seconds)
+Propagate EarthMoonProp(Sat) {Sat.ElapsedDays = 5};

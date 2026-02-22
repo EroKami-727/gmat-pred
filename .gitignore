@@ -1,10 +1,31 @@
 # Git ignore file for NASA GMAT Early Exit project
-data/**/*
-!data/**/.gitkeep
-**/__pycache__/
+
+# Generated data (Parquet files, 60+ MB)
+data/
+!data/.gitkeep
+
+# Python
+__pycache__/
 *.pyc
-.ipynb_checkpoints/
+*.pyo
+*.egg-info/
+
+# Virtual environments
 .venv/
 env/
 venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# GMAT output
+gmat_scripts/output/
+*.report
+*.data
+
+# Logs
 *.log
+
+# OS
+.DS_Store
+Thumbs.db
