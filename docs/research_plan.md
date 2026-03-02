@@ -1,47 +1,46 @@
 # Research Enhancement Plan
-**Project Title:** Early-Exit Neural Prediction for Trajectory Simulation Pruning in Earth–Moon Transfers
+**Project Title:** OrbitGuard: Physics-Invariant Sequence Modeling for Trajectory Simulation Pruning
 
-## 1. Comparative Architecture Study
-**Objective:** Evaluate the optimal deep learning architecture for early trajectory failure detection.
+## 1. Domain Adaptation & Generalization (The "Holy Grail")
+**Objective:** Prove that an ML model trained on one mission profile can generalize to an entirely unseen interplanetary topology (e.g., train on Earth-Moon, test on Earth-Mars).
 
-| Architecture | Rationale |
-|--------------|-----------|
-| **LSTM** | Baseline for sequential time-series; captures temporal dependencies. |
-| **Transformer Encoder** | Uses self-attention; captures global relationships across trajectory windows. |
-| **1D CNN** | Computationally efficient; strong at extracting features from structured physical signals. |
+**The Ephemeris Problem:**
+If we train a model using standard J2000 coordinates (Absolute X, Y, Z), the model learns *where the Moon was on that specific launch date*. If we launch a month later, the physics of the trajectory might be identical, but the Moon has moved. An absolute-coordinate model will fail instantly because it doesn't "know" where the target is.
 
-**Evaluation Metrics:** Accuracy, Precision, Recall, False Positive Rate (FPR), False Negative Rate (FNR), Inference Time, Training Time, and Memory Footprint.
+**The Solution: Target-Centric Rotating Frames & Physics Invariants:**
+To make the model generalize across different dates (or entirely different planetary systems), we must transform the data *before* the LSTM sees it. The LSTM will never see raw X,Y,Z positions. Instead, it will see:
 
----
+1. **Target-Centric Coordinates:** We place the target body (Moon/Mars) at `(0,0,0)`. The spacecraft's position becomes a *relative distance vector* ($\vec{r}_{rel}$). The model doesn't care where the target is in the solar system; it only cares where the ship is *relative to the target*.
+2. **Rotating (Synodic) Frame:** We rotate the coordinate system so that the X-axis always points from the central body (Earth) to the target body. This means the "geometry" of the transfer always looks identical to the LSTM, regardless of the calendar date.
+3. **Specific Orbital Energy ($E$) & Angular Momentum ($h$):** Instead of raw velocity, we feed the model $E = v^2 / 2 - \mu / r$. Because we normalize by the target's gravity constant ($\mu$), an energy curve approaching the Moon looks mathematically identical to an energy curve approaching Mars (just scaled by the Sphere of Influence).
 
-## 2. Early-Exit Timing Ablation Study
-**Objective:** Determine the minimum trajectory data required for reliable pruning.
-
-- **Observation Windows:** Systematic testing at 10%, 20%, 30%, 40%, and 50% of total transfer time.
-- **Goal:** Plot the "Early-Exit Frontier" (Accuracy vs. Time Saved vs. FPR) to find the earliest reliable decision point.
+**Hypothesis:** By feeding the LSTM a continuous stream of *Target-Relative Energy states* instead of *Absolute Geometries*, the network learns the universal Newtonian pattern of "missing a gravity well," allowing it to prune failing Mars simulations despite only ever being trained on the Moon.
 
 ---
 
-## 3. Dataset Scaling & Variety
-**Objective:** Improve generalization and statistical confidence.
-
-- **Target Size:** 50,000 to 100,000 simulated trajectories.
-- **Parameter Variation:** Randomized TOI ΔV, RAAN, AOP, Launch Epoch (1 full year), altitude, inclination, and C3 energy levels.
-- **Success Criteria:** Clear binary classification based on LOI Eccentricity (<1), Periapsis altitude, B-plane tolerance, and stability.
-
----
-
-## 4. Statistical Rigor
-**Objective:** Ensure reproducibility and scientific stability.
-
-- **Method:** Run every experiment 5–10 times with different random seeds.
-- **Reporting:** Report mean results with standard deviation.
-- **Impact:** Demonstrates that the "Early-Exit" capability is a robust physical property, not a result of "lucky" weight initialization.
+## 2. Advanced Prediction Targets
+**Objective:** Move beyond simple binary classification (`Landed=True/False`) to provide deep astrodynamic insights.
+- **Multi-class Classification:** Predict *how* the mission will fail (`surface_impact`, `orbit_too_high`, `missed_target`, `hyperbolic_escape`).
+- **Regression (Closest Approach):** Predict the exact continuous value of the closest-approach distance (e.g., "This trajectory will miss the target by 43,205 km").
+- **Survival Analysis (Time-to-Failure):** Predict *when* the trajectory will violate mathematical safety bounds.
 
 ---
 
-## Research Questions Answered
-1. Can early trajectory trends reliably predict terminal mission status?
-2. Which neural architecture best balances accuracy and inference speed?
-3. What is the earliest possible decision point for simulation pruning?
-4. Are these results statistically stable across randomized orbital geometries?
+## 3. Comparative Architecture Study
+**Objective:** Evaluate the optimal deep learning architecture for processing early-flight physics telemetry.
+- **LSTM / GRU:** Baseline for sequential time-series modeling.
+- **Time-Series Transformers (Autoformer / Informer):** Superior at handling long-context sequences through self-attention mechanisms.
+- **1D CNN (ResNet):** Computationally lighter and highly effective at localized pattern extraction.
+
+---
+
+## 4. Early-Exit Timing Ablation Study
+**Objective:** the minimum trajectory data required for reliable simulation pruning.
+- Plotting the "Early-Exit Frontier" (Accuracy vs. Time Observed vs. False Positive Rate). How early can we exit? 10% of flight? 25%? 50%?
+
+---
+
+## Research Questions Addressed
+1. **Generalizability:** Can a model trained on normalized Earth-Moon orbital energy flows accurately predict orbital failures in an Earth-Mars system?
+2. **Predictive Granularity:** Is ML capable of classifying the *exact physical mode* of failure, or predicting the exact miss-distance via regression, using only the first 20% of flight telemetry?
+3. **Architecture Optimization:** Which recurrent or attention-based network best captures astrodynamic invariants?

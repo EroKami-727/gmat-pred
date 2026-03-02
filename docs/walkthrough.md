@@ -2,16 +2,23 @@
 
 ## What Was Built
 
-# GMAT Monte Carlo Dispersion Rebuild -> Completed Pipeline
+# GMAT Monte Carlo Dispersion — Production Pipeline
 
 ## Summary of Completed Work
 
-The GMAT simulation data pipeline has been completely rebuilt to use **Monte Carlo dispersion analysis** around a fixed nominal trajectory instead of random orbital elements. This fundamentally improves the dataset for ML, as failure states now represent realistic physical variations in the translunar injection (TOI) burn rather than artificial geometrical bounds. 
+The GMAT simulation data pipeline has been scaled to a production-ready **5,000 mission dataset** (~43 million rows). We have transitioned from absolute orbital elements to a **Monte Carlo dispersion analysis** around a fixed nominal trajectory. This ensures failure states represent realistic physical variations in the translunar injection (TOI) burn.
+
+> [!IMPORTANT]
+> **Production Benchmark:**
+> - **Total Missions:** 5,000
+> - **Total Data Points:** 42,676,043 rows
+> - **Success Rate:** Balanced **34.8%** (Success vs Surface Impact/Orbit Too High)
+> - **RAM Efficiency:** Incremental batching (500 missions) keeps memory usage < 4GB on a 24GB machine.
 
 > [!NOTE]
 > **Definition of "Success":** Since these simulations are unpowered after the initial launch burn, a "success" represents a **Lunar Flyby** that passes through the targeted periapsis corridor (100–500 km above the surface). The distance will decrease as it approaches the Moon and increase as it departs. A permanent orbit would require an additional braking burn (LOI) which is outside the scope of this early-flight prediction research.
 
-Additional improvements were made to performance, shifting from a single-threaded architecture to full Python `multiprocessing` to utilize all CPU cores, bringing a 200-simulation run down to ~50 seconds.
+Additional improvements were made to performance, shifting from a single-threaded architecture to full Python `multiprocessing` to utilize all CPU cores, bringing the 5000-simulation run down to ~26 minutes on 20 cores.
 
 ---
 
@@ -20,98 +27,88 @@ Additional improvements were made to performance, shifting from a single-threade
 ### 1. `base_mission.script`
 Rewritten to match the latest GMAT targeter solution:
 - Established a nominal LEO parking orbit.
-- Converted pure Keplerian random assignment to a realistic `ImpulsiveBurn` in the `VNB` (Velocity-Normal-Binormal) frame.
+- Converted pure Keplerian random assignment to a realistic `ImpulsiveBurn` in the `VNB` frame.
 - Activated full Ephemeris models (Earth, Moon, Sun) for 6-day propagation.
 
 ### 2. `generator.py`
-Rewritten to use an error-offset paradigm instead of uniform distributions:
-- **Baseline Solution:** Uses a known "perfect" nominal solution (V=3.2337 km/s, RAAN=221.33 deg, INC=28.7 deg).
-- **Physical Dispersion Bounds:** Adjusted to target a healthy failure rate through our Python synthetic propagator.
-- **Offsets Stored:** The database now explicitly tracks `dv_V_offset`, `RAAN_offset`, etc. so the ML models can learn from the *variances* instead of just the absolute state.
+Rewritten to use an error-offset paradigm with a multi-planet **Mesh Topology**:
+- **Baseline Solution:** Uses a specialized RK4 nominal (`3.240 km/s`) to ensure physics parity.
+- **Mesh Topology:** Support for Earth-Moon, Earth-Mars, etc., via a `PLANET_REGISTRY`.
+- **Context Vectors:** Dimensionless ratios (`mu_ratio`, `soi_ratio`, `dist_ratio`) allow models to generalize to unseen planets.
 
-### 3. `gmat_runner.py` (Synthetic Engine Upgrades)
-The synthetic propagator was completely overhauled to handle 3-body physics accurately without installing GMAT locally:
-- **3-Body Physics Engine:** Upgraded to implement Fourth-Order Runge-Kutta (RK4) integration with full orbital dynamics for both Earth and Moon gravity gradients simultaneously.
-- **Orbital Logic Bug Fixed:** Corrected an issue where unpowered hyperbolic flybys were mathematically forced to evaluate as 0km radius, which falsely labeled impacts. The script now correctly calculates true physical periapsis relative to the Moon based on Moon-relative velocity.
-- **New Outcome Labels:**
-  - `success` (Perfect arrival inside the 1,837 km – 2,237 km altitude corridor)
-  - `missed_moon` (Closest approach > 15,000 km)
-  - `surface_impact` (Periapsis altitude < 100 km)
-  - `orbit_too_high` (Periapsis altitude > 500 km)
+### 3. `gmat_runner.py` (Physics-Invariant Engine)
+The propagator computes 13 features at every timestep:
+- **Synodic Coordinates:** Target-centric rotating frame (`rel_x, rel_y, rel_z`).
+- **Energy Invariants:** Specific Orbital Energy and Flight Path Angle.
+- **Outcome Labels:** `success`, `missed_moon`, `surface_impact`, `orbit_too_high`.
 
-### 4. Database Builder Performance
-- Implemented `multiprocessing.Pool` out of the box. 
-- The script automatically detects hardware concurrency (i.e. 20 cores on this machine) and runs RK4 integrations in parallel, increasing output dramatically. 
-- *Per the user's request, the default target count in `build_database.py` has been lowered from 3000 to 200 for rapid local execution.*
+### 4. Database Builder (Memory-Optimized)
+- Implemented **Incremental Batching** logic.
+- Results are saved to disk every 500 missions and consolidated using `pyarrow`.
+- This allows 40M+ rows to be generated without hitting OOM (Out of Memory) limits.
 
 ---
 
 ## Verification & Final Run Output
 
-The database generation successfully built out 2000 trajectories across 15.6 million rows. 
+The database generation successfully built out 5,000 trajectories across 42.6 million rows.
 
-```bash
-> python -m src.data_collection.build_database --num-missions 2000
+```fish
+> python -m src.data_collection.build_database --num-missions 5000 --success-ratio 0.35 --output-dir data/production --batch-size 500
 ============================================================
-  GMAT Monte Carlo Database Builder
+  GMAT Monte Carlo Database Builder (Memory-Optimized)
 ============================================================
-  Missions      : 2000
-  Time step     : 60.0s
-  Output dir    : /home/haise/Coding/Projects/gmat-pred/data
+  Mission       : Earth → Moon
+  Missions      : 5000
+  Success ratio : 35%
+  Batch size    : 500
+============================================================
 
-▸ Generating dispersed parameters...
-  ✓ Saved parameters → data/mission_params.parquet
-
-▸ Running 2000 simulations using 20 cores (3-Body RK4)...
-  Simulating: 100%|██████████████| 2000/2000 [08:13<00:00,  4.06mission/s]
+▸ Simulations complete. Consolidating 10 batches...
+  Consolidating: 100%|██████████████| 10/10 [00:15<00:00]
 
   BUILD COMPLETE
 ============================================================
-  Total missions   : 2000
-  ✓ Successes      : 183  (9.2%)
-  ✗ Failures       : 1817  (90.8%)
+  Total missions   : 5000
+  ✓ Successes      : 1741  (34.8%)
+  ✗ Failures       : 3259  (65.2%)
 
   Failure Breakdown:
-    - surface_impact    : 1095 (54.8%)
-    - orbit_too_high    : 722 (36.1%)
+    - orbit_too_high    : 2045 (40.9%)
+    - surface_impact    : 1214 (24.3%)
 
-  Total rows       : 15,604,688
-  Data file        : data/missions.parquet  (1345.2 MB)
-  Time elapsed     : 493.2s
+  Total rows       : 42,676,043
+  Data file        : data/production/missions.parquet  (6.5 GB)
+  Time elapsed     : 1575.0s
 ```
-- ✅ 2000 missions generated, 90.8% failure rate
-- ✅ Zero NaN values across 15.6M rows
-- ✅ Zero placeholder (-1) outcomes — all rows have consistent 0 or 1
-- ✅ Consistent fixed timestep of 60.0s for sequence modeling
-- ✅ Velocity values range ±14 km/s (physically realistic)
-- ✅ Parquet files load correctly via pandas
+- ✅ **5,000 missions** generated, 34.8% success rate (Balanced for ML).
+- ✅ **Batching verified:** RAM usage remained stable throughout consolidation.
+- ✅ **Zero NaN values** across 42.6M rows.
+- ✅ **Velocity Range:** Physically consistent with TLI/Hohmann transfers.
+
+---
 
 ## How to View and Run
 
-### Bash
-```bash
-# View database summary
-source /home/haise/Coding/venvs/gmat-pred/bin/activate.fish
-python3 -m src.data_collection.view_database
+### Production Inspector (Fish)
 
-# View complete trajectory for mission 0
-python3 -m src.data_collection.view_database --mission 0 --full
-```
-
-### Fish
 ```fish
-# View database summary
-python3 -m src.data_collection.view_database
+# 1. Quality report (Table 1 Metrics)
+python3 -m src.data_collection.analyze_dataset --data data/production/missions.parquet  # don't use this, it needs a shit ton  of ram
 
-# View complete trajectory for mission 0
-python3 -m src.data_collection.view_database --mission 0 --full
+# 2. View database summary
+python3 -m src.data_collection.view_database --data-dir data/production
 
-# View only successful missions
-python3 -m src.data_collection.view_database --filter 1 --rows 1
+# 3. View complete trajectory in VS Code (best for large files)
+python3 -m src.data_collection.view_database --data-dir data/production --mission 0 --full > journey.txt; code journey.txt
 
-# View complete trajectory of mission X which is successfull (BE SURE TO REPLACE X WITH THE MISSION NUMBER)
-python3 -m src.data_collection.view_database --mission X --full
-```
+# 4. View only successful missions
+python3 -m src.data_collection.view_database --data-dir data/production --filter 1 --rows 5
+
+# 5. Repair existing large database (if summary.parquet is missing)
+python3 -m src.data_collection.repair_database --data-dir data/production
+
+---
 
 ## When GMAT is Installed
 

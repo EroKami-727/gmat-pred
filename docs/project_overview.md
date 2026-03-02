@@ -27,10 +27,11 @@ By trading a tiny bit of accuracy, we can skip the remaining 60% to 80% of the m
 * **Hardware Optimization:** Multiprocessing (using all 14 cores of an i7 processor)
 
 ## Project Goals
-2. **Data Generation [✓ COMPLETE]:** Built a high-performance, multi-threaded pipeline using 3-body RK4 physics to generate thousands of physically accurate Earth-Moon transfers via Monte Carlo dispersion analysis.
-3. **Behavioral Prediction:** Train deep learning models to predict failure from early-flight telemetry.
+1. **Data Generation [✓ COMPLETE]:** Built a high-performance, memory-optimized pipeline using 3-body RK4 physics. Generated a production dataset of **5,000 missions** (42.6M rows) with a balanced **34.8% success rate**.
+2. **Mesh Topology [✓ IMPLEMENTED]:** Support for interplanetary transfers (Earth-Mars, Earth-Jupiter, etc.) using dimensionless context vectors for zero-shot ML generalization.
+3. **Behavioral Prediction [IN PROGRESS]:** Training deep learning models (LSTM/Transformer) to predict failure from early-flight telemetry (10-40% window).
 4. **Execution Pipeline:** Implement a real-time monitor that stops GMAT simulations upon failure detection.
-4. **Research & Optimization:** Conduct comparative studies on architectures and early-exit thresholds.
 
 > [!TIP]
-> See the detailed [Research Enhancement Plan](docs/research_plan.md) for specifics on architecture comparison, ablation studies, and statistical validation.
+> See the detailed [ML Pipeline Summary & Roadmap](ml_pipeline_summary.md) for technical implementation details of the LSTM/Physics-Invariant pipeline.
+> Also check the [Research Enhancement Plan](research_plan.md) for architectural comparisons.
