@@ -7,9 +7,10 @@ It establishes a high-performance **Monte Carlo dispersion analysis pipeline** t
 ---
 
 ## 🛰️ Current Build Status (Production)
-- **Dataset:** 5,000 missions (42.6M rows) generated on 20 cores.
-- **Success Rate:** Balanced **34.8%** (Success vs. Surface Impact / Orbit Too High).
-- **GPU Optimized:** Training verified on **RTX 4060** using `BCEWithLogitsLoss` and `pos_weight`.
+- **Dataset:** 10,000 missions (85.3M rows) generated on 20 cores.
+- **Success Rate:** Balanced **35.3%** (Success vs. Surface Impact / Orbit Too High).
+- **Storage:** 13.44 GB (Zstandard/Snappy compressed Parquet).
+- **GPU Optimized:** Training verified on **RTX 4060** using `BCEWithLogitsLoss`.
 - **Mesh Topology:** Support for Earth-Moon, Earth-Mars, and Earth-Jupiter transfers.
 
 ---
@@ -23,22 +24,31 @@ It establishes a high-performance **Monte Carlo dispersion analysis pipeline** t
 
 ## 🚀 Quick Start (Fish Terminal)
 
-### 1. Production Runtime (5000 Missions)
+### 1. Production Runtime (10,000 Missions)
 ```fish
-source /home/haise/Coding/venvs/gmat-pred/bin/activate.fish
-python3 -m src.data_collection.build_database --num-missions 5000 --success-ratio 0.35 --output-dir data/production --batch-size 500
+# Run 5000 missions (Run 1)
+python3 -m src.data_collection.build_database --num-missions 5000 --output-dir data/production
+
+# Run 5000 missions (Run 2 - different seed)
+python3 -m src.data_collection.build_database --num-missions 5000 --output-dir data/run2 --seed 100
+
+# Merge into 10k Master Dataset (Streaming)
+python3 -m src.data_collection.merge_datasets --base data/production --new data/run2 --out data/merged
 ```
 
-### 2. View Database & Stats
+### 2. View Database & EDA
 ```fish
-# Quality report (Table 1 stats)
-python3 -m src.data_collection.analyze_dataset --data data/production/missions.parquet
+# Terminal CLI inspector
+python3 -m src.data_collection.view_database --data-dir data/merged
 
-# CLI inspector
-python3 -m src.data_collection.view_database --data-dir data/production
+# Generate Visual EDA Report (9 Premium Charts)
+python3 -m src.data_collection.eda_report --data data/merged/missions.parquet --out reports/eda/
+
+# Open HTML Report
+xdg-open reports/eda/eda_report.html
 ```
 
 ### 3. Model Training
 ```fish
-python3 -m src.ml.train --data data/production/missions.parquet --epochs 50 --model lstm --output-dir models/production
+python3 -m src.ml.train --data data/merged/missions.parquet --epochs 50 --model lstm --output-dir models/production
 ```

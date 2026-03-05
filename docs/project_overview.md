@@ -27,7 +27,7 @@ By trading a tiny bit of accuracy, we can skip the remaining 60% to 80% of the m
 * **Hardware Optimization:** Multiprocessing (using all 14 cores of an i7 processor)
 
 ## Project Goals
-1. **Data Generation [✓ COMPLETE]:** Built a high-performance, memory-optimized pipeline using 3-body RK4 physics. Generated a production dataset of **5,000 missions** (42.6M rows) with a balanced **34.8% success rate**.
+1. **Data Generation [✓ COMPLETED]:** Built a high-performance, memory-optimized pipeline using 3-body RK4 physics. Production dataset at **10,000 missions** (85.3M rows, 35.3% success). Features a streaming merge system and a 9-chart premium **[EDA Visual Report](file:///home/haise/Coding/Projects/gmat-pred/reports/eda/eda_report.html)** for physics sanity checks.
 2. **Mesh Topology [✓ IMPLEMENTED]:** Support for interplanetary transfers (Earth-Mars, Earth-Jupiter, etc.) using dimensionless context vectors for zero-shot ML generalization.
 3. **Behavioral Prediction [IN PROGRESS]:** Training deep learning models (LSTM/Transformer) to predict failure from early-flight telemetry (10-40% window).
 4. **Execution Pipeline:** Implement a real-time monitor that stops GMAT simulations upon failure detection.

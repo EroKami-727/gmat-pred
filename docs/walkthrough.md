@@ -6,14 +6,15 @@
 
 ## Summary of Completed Work
 
-The GMAT simulation data pipeline has been scaled to a production-ready **5,000 mission dataset** (~43 million rows). We have transitioned from absolute orbital elements to a **Monte Carlo dispersion analysis** around a fixed nominal trajectory. This ensures failure states represent realistic physical variations in the translunar injection (TOI) burn.
+The GMAT simulation data pipeline has been scaled to a production-ready **10,000 mission dataset** (~85 million rows). We use a **Monte Carlo dispersion analysis** around a fixed nominal trajectory. 
 
 > [!IMPORTANT]
 > **Production Benchmark:**
-> - **Total Missions:** 5,000
-> - **Total Data Points:** 42,676,043 rows
-> - **Success Rate:** Balanced **34.8%** (Success vs Surface Impact/Orbit Too High)
-> - **RAM Efficiency:** Incremental batching (500 missions) keeps memory usage < 4GB on a 24GB machine.
+> - **Total Missions:** 10,000
+> - **Total Data Points:** 85,282,712 rows
+> - **File Size:** 13.44 GB
+> - **Success Rate:** Balanced **35.3%**
+> - **RAM Efficiency:** Streaming merge strategy allows handling 13GB+ files on standard hardware.
 
 > [!NOTE]
 > **Definition of "Success":** Since these simulations are unpowered after the initial launch burn, a "success" represents a **Lunar Flyby** that passes through the targeted periapsis corridor (100–500 km above the surface). The distance will decrease as it approaches the Moon and increase as it departs. A permanent orbit would require an additional braking burn (LOI) which is outside the scope of this early-flight prediction research.
@@ -97,16 +98,17 @@ The database generation successfully built out 5,000 trajectories across 42.6 mi
 python3 -m src.data_collection.analyze_dataset --data data/production/missions.parquet  # don't use this, it needs a shit ton  of ram
 
 # 2. View database summary
-python3 -m src.data_collection.view_database --data-dir data/production
+python3 -m src.data_collection.view_database --data-dir data/merged
 
-# 3. View complete trajectory in VS Code (best for large files)
-python3 -m src.data_collection.view_database --data-dir data/production --mission 0 --full > journey.txt; code journey.txt
+# 3. Scale to 10k Missions (Streaming Merge)
+python3 -m src.data_collection.merge_datasets --base data/production --new data/run2 --out data/merged
 
-# 4. View only successful missions
-python3 -m src.data_collection.view_database --data-dir data/production --filter 1 --rows 5
+# 4. Generate 9-Chart Visual EDA Report
+python3 -m src.data_collection.eda_report --data data/merged/missions.parquet --out reports/eda/
+xdg-open reports/eda/eda_report.html
 
-# 5. Repair existing large database (if summary.parquet is missing)
-python3 -m src.data_collection.repair_database --data-dir data/production
+# 5. View only successful missions
+python3 -m src.data_collection.view_database --data-dir data/merged --filter 1 --rows 5
 
 ---
 
