@@ -297,19 +297,18 @@ def create_dataloaders(
     test_path = parquet_dir / "_test_split.parquet"
 
     # Use ParquetWriter to split files row-by-row / batch-by-batch
+    import pyarrow as pa
     schema = pf.schema_arrow
     with pq.ParquetWriter(train_path, schema) as w_train, \
          pq.ParquetWriter(val_path, schema) as w_val, \
          pq.ParquetWriter(test_path, schema) as w_test:
-        
+
         for batch in pf.iter_batches(batch_size=200000):
-            # We can use pyarrow masks for speed and memory efficiency
+            # PyArrow filter() requires a PyArrow BooleanArray, not a numpy array
             batch_mids = batch["mission_id"].to_numpy()
-            
-            # This is still a bit heavy but much better than loading the whole 42M rows
-            w_train.write_batch(batch.filter(np.isin(batch_mids, list(train_ids))))
-            w_val.write_batch(batch.filter(np.isin(batch_mids, list(val_ids))))
-            w_test.write_batch(batch.filter(np.isin(batch_mids, list(test_ids))))
+            w_train.write_batch(batch.filter(pa.array(np.isin(batch_mids, list(train_ids)))))
+            w_val.write_batch(batch.filter(pa.array(np.isin(batch_mids, list(val_ids)))))
+            w_test.write_batch(batch.filter(pa.array(np.isin(batch_mids, list(test_ids)))))
 
     # Build datasets — scaler fitted on train only
     train_ds = TrajectoryDataset(
