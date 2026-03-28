@@ -14,6 +14,7 @@ Features:
 """
 
 import os
+import json
 import time
 import argparse
 from pathlib import Path
@@ -21,6 +22,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -54,6 +56,7 @@ def train_one_epoch(model, loader, optimizer, criterion, device, task="binary"):
             
         loss = criterion(preds, y.float() if task in ["binary", "regression"] else y)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
         total_loss += loss.item()
@@ -201,11 +204,13 @@ def main():
         ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=3, factor=0.5, verbose=False)
 
     # 3. Training Loop
     os.makedirs(args.output_dir, exist_ok=True)
     best_val_loss = float('inf')
-    
+    metrics_history = []
+
     total_params = sum(p.numel() for p in model.parameters())
     print(f"  Model params     : {total_params:,}")
     print(f"\n▸ Starting training for {args.epochs} epochs...")
@@ -214,17 +219,32 @@ def main():
         t0 = time.time()
         train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device, args.task)
         val_loss, val_acc, val_preds, val_labels = validate(model, val_loader, criterion, device, args.task)
+        scheduler.step(val_loss)
         dt = time.time() - t0
-        
+
         # Compute extra metrics for binary
+        f1, auc = 0.0, 0.0
         extra = ""
         if args.task == "binary" and val_preds:
             f1, auc = _compute_metrics(val_preds, val_labels)
             extra = f" | F1={f1:.3f} AUC={auc:.3f}"
-        
+
+        current_lr = optimizer.param_groups[0]["lr"]
         print(f"Epoch {epoch:02d} | Train Loss: {train_loss:.4f} ({train_acc:.2%}) | "
-              f"Val Loss: {val_loss:.4f} ({val_acc:.2%}){extra} | {dt:.1f}s")
-        
+              f"Val Loss: {val_loss:.4f} ({val_acc:.2%}){extra} | lr={current_lr:.2e} | {dt:.1f}s")
+
+        metrics_history.append({
+            "epoch": epoch,
+            "train_loss": round(train_loss, 6),
+            "train_acc": round(train_acc, 6),
+            "val_loss": round(val_loss, 6),
+            "val_acc": round(val_acc, 6),
+            "f1": round(f1, 6),
+            "auc": round(auc, 6),
+            "lr": current_lr,
+            "elapsed_s": round(dt, 2),
+        })
+
         # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -235,6 +255,12 @@ def main():
             import pickle
             with open(scaler_path, "wb") as f:
                 pickle.dump(scaler, f)
+
+    # Save full metrics history for dashboard plotting
+    metrics_path = Path(args.output_dir) / f"metrics_{args.model}_{args.task}.json"
+    with open(metrics_path, "w") as f:
+        json.dump(metrics_history, f, indent=2)
+    print(f"▸ Metrics saved to {metrics_path}")
 
     # 4. Final Evaluation on Test Set
     print(f"\n▸ Evaluating best model on test set...")
