@@ -33,18 +33,18 @@
   --bg1: #0f0f0f;
   --bg2: #141414;
   --bg3: #060606;
-  --cyan: #4de8e8;
-  --cyan-glow: rgba(77, 232, 232, 0.15);
-  --cyan-dim: #1e5c5c;
-  --green: #4ade80;
-  --green-glow: rgba(74, 222, 128, 0.12);
-  --red: #f87171;
-  --orange: #fbbf24;
-  --text: #cbd5e1;
-  --text-dim: #64748b;
-  --text-bright: #f1f5f9;
-  --border: #1e293b;
-  --border2: #334155;
+  --cyan: #f5f5f5;
+  --cyan-glow: rgba(245, 245, 245, 0.15);
+  --cyan-dim: #404040;
+  --green: #a3a3a3;
+  --green-glow: rgba(163, 163, 163, 0.12);
+  --red: #ef4444;
+  --orange: #f59e0b;
+  --text: #d4d4d4;
+  --text-dim: #737373;
+  --text-bright: #ffffff;
+  --border: #262626;
+  --border2: #404040;
   --mono: 'Geist Mono', 'Share Tech Mono', monospace;
 }
 
