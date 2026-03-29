@@ -18,10 +18,10 @@ const FontLink = () => (
     @keyframes orbit2   { from { transform:rotate(120deg) translateX(100px) rotate(-120deg); } to { transform:rotate(480deg) translateX(100px) rotate(-480deg); } }
     @keyframes twinkle  { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.3; transform:scale(0.6); } }
     @keyframes pulseGlow { 0%,100% { box-shadow:0 0 8px #aaaaaa; } 50% { box-shadow:0 0 20px #aaaaaa; } }
-    .nav-link { color:#94a3b8; text-decoration:none; font-size:14px; font-weight:500; transition:color 0.2s; }
-    .nav-link:hover { color:#e2e2e2; }
-    .footer-link { color:#64748b; text-decoration:none; font-size:14px; line-height:2.4; transition:color 0.2s; }
-    .footer-link:hover { color:#e2e2e2; }
+    .nav-link { color:#888888; text-decoration:none; font-size:14px; font-weight:500; transition:color 0.2s; }
+    .nav-link:hover { color:#ffffff; }
+    .footer-link { color:#888888; text-decoration:none; font-size:14px; line-height:2.4; transition:color 0.2s; }
+    .footer-link:hover { color:#ffffff; }
     .feat-card { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.07); border-radius:24px; padding:36px 32px; transition:transform 0.35s cubic-bezier(0.16,1,0.3,1),border-color 0.3s,background 0.3s,box-shadow 0.35s; position:relative; overflow:hidden; }
     .feat-card::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(226,226,226,0.06),transparent 70%); opacity:0; transition:opacity 0.35s; pointer-events:none; }
     .feat-card:hover { transform:translateY(-10px); border-color:rgba(226,226,226,0.28); background:rgba(226,226,226,0.04); box-shadow:0 24px 64px rgba(0,0,0,0.5),0 0 0 1px rgba(226,226,226,0.1); }
@@ -289,7 +289,7 @@ export default function LandingPage({ onEnterDashboard }) {
       <FontLink />
 
       {/* ── Fixed Nav ─────────────────────────────────────────── */}
-      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 5vw', height: '80px', background: 'rgba(9,9,9,0.85)', backdropFilter: 'blur(24px)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 5vw', height: '80px', background: 'rgba(25,25,25,0.8)', backdropFilter: 'blur(32px)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="font-serif" style={{ fontSize: '24px', fontWeight: 600, color: '#FFFFFF', letterSpacing: '-0.02em', fontFamily: "'Newsreader', serif" }}>
           OrbitGuard.
         </div>
@@ -490,12 +490,12 @@ export default function LandingPage({ onEnterDashboard }) {
         <div className="footer-grid" style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 48, marginBottom: 56 }}>
           <div>
             <div className="lg-heading clip-grad" style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>ORBITGUARD</div>
-            <p style={{ fontSize: 12, color: 'rgba(100,116,139,0.85)', lineHeight: 1.85, maxWidth: 300, fontFamily: "'Geist Mono',monospace" }}>AI-powered spacecraft mission failure prediction. Built on NASA GMAT physics with LSTM + Transformer deep learning.</p>
+            <p style={{ fontSize: 12, color: 'rgba(160,160,160,0.85)', lineHeight: 1.85, maxWidth: 300, fontFamily: "'Geist Mono',monospace" }}>AI-powered spacecraft mission failure prediction. Built on NASA GMAT physics with LSTM + Transformer deep learning.</p>
             <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
               {['GitHub', 'arXiv', 'Twitter'].map(s => (
-                <a key={s} href="#" className="lg-heading" style={{ padding: '7px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', fontSize: 12, color: '#64748b', textDecoration: 'none', fontWeight: 600, transition: 'all 0.2s' }}
+                <a key={s} href="#" className="lg-heading" style={{ padding: '7px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', fontSize: 12, color: '#888888', textDecoration: 'none', fontWeight: 600, transition: 'all 0.2s' }}
                   onMouseEnter={e => { e.currentTarget.style.color = '#e2e2e2'; e.currentTarget.style.borderColor = 'rgba(226,226,226,0.3)' }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}>
+                  onMouseLeave={e => { e.currentTarget.style.color = '#888888'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}>
                   {s}
                 </a>
               ))}
@@ -513,7 +513,7 @@ export default function LandingPage({ onEnterDashboard }) {
           ))}
         </div>
         <div style={{ maxWidth: 1200, margin: '0 auto', paddingTop: 28, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-          <div style={{ fontSize: 13, color: '#475569' }}>© 2026 OrbitGuard. Built on NASA GMAT research. All rights reserved.</div>
+          <div style={{ fontSize: 13, color: '#666666' }}>© 2026 OrbitGuard. Built on NASA GMAT research. All rights reserved.</div>
           <div style={{ display: 'flex', gap: 24 }}>
             {['Privacy', 'Terms', 'Security'].map(l => <a key={l} href="#" className="footer-link">{l}</a>)}
           </div>
