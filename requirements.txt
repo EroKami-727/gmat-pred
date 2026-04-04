@@ -5,3 +5,7 @@ tqdm
 pyarrow
 fastparquet
 matplotlib
+torch
+scikit-learn
+fastapi
+uvicorn[standard]

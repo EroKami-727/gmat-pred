@@ -4,9 +4,10 @@ import Overview from './panels/Overview'
 import Training from './panels/Training'
 import Ablation from './panels/Ablation'
 import Dataset from './panels/Dataset'
+import Simulator from './panels/Simulator'
 
-const TABS = ['OVERVIEW', 'TRAINING', 'ABLATION', 'DATASET']
-const PANELS = { OVERVIEW: Overview, TRAINING: Training, ABLATION: Ablation, DATASET: Dataset }
+const TABS = ['OVERVIEW', 'SIMULATOR', 'TRAINING', 'ABLATION', 'DATASET']
+const PANELS = { OVERVIEW: Overview, SIMULATOR: Simulator, TRAINING: Training, ABLATION: Ablation, DATASET: Dataset }
 
 function Header({ onBack }) {
   return (

@@ -5,22 +5,35 @@ import {
   ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 
-// ── 50-epoch ground-truth curves ────────────────────────────
-function makeCurves(n = 50) {
-  return Array.from({ length: n }, (_, i) => {
-    const t = i / (n - 1)
-    const train = 2.45 * Math.exp(-3.8 * t) + 0.18 + (Math.random() - 0.5) * 0.012
-    const val   = 2.62 * Math.exp(-3.1 * t) + 0.62 + (Math.random() - 0.5) * 0.015
-    const auc   = 0.51 + 0.38 / (1 + Math.exp(-10 * (t - 0.35))) + (Math.random() - 0.5) * 0.004
-    return { train: +train.toFixed(4), val: +val.toFixed(4), auc: +Math.min(auc, 0.895).toFixed(4) }
-  })
+const API = 'http://localhost:8000'
+
+// Parse a python3 -m src.ml.train ... command into form params
+function parseTrainCommand(cmd) {
+  const flags = {
+    '--lr':           v => ({ lr: v }),
+    '--batch-size':   v => ({ batch: v }),
+    '--epochs':       v => ({ epochs: v }),
+    '--hidden-dim':   v => ({ hidden: v }),
+    '--early-exit':   v => ({ earlyExit: v }),
+    '--model':        v => ({ arch: v === 'transformer' ? 'TrajectoryTransformer' : 'TrajectoryLSTM' }),
+    '--data':         v => ({ data: v }),
+    '--output-dir':   v => ({ outputDir: v }),
+  }
+  const tokens = cmd.trim().split(/\s+/)
+  const parsed = {}
+  for (let i = 0; i < tokens.length; i++) {
+    const fn = flags[tokens[i]]
+    if (fn && tokens[i + 1] && !tokens[i + 1].startsWith('--')) {
+      Object.assign(parsed, fn(tokens[++i]))
+    }
+  }
+  return parsed
 }
-const CURVES = makeCurves(50)
 
 const INIT_LOGS = [
   ['info', '> ORBITGUARD TRAINING MODULE READY'],
   ['dim',  '> DATASET: data/merged/missions.parquet'],
-  ['dim',  '> DEVICE: cuda (NVIDIA RTX 4060, 8.0 GB)'],
+  ['dim',  '> DEVICE: detecting...'],
   ['dim',  '> GRAD CLIP: max_norm=1.0   LR SCHEDULER: ReduceLROnPlateau'],
   ['dim',  ''],
   ['dim',  'Configure hyperparameters and press LAUNCH TRAINING.'],
@@ -38,89 +51,165 @@ const chartStyle = {
 export default function Training() {
   const [logs, setLogs]       = useState(INIT_LOGS)
   const [running, setRunning] = useState(false)
-  const [liveData, setLiveData] = useState([])   // grows one point per epoch
+  const [liveData, setLiveData] = useState([])
+  const [jobId, setJobId]     = useState(null)
+  const [apiOnline, setApiOnline] = useState(null)  // null=checking, true/false
 
-  const epochRef    = useRef(1)
-  const intervalRef = useRef(null)
-  const termRef     = useRef(null)
+  const esRef     = useRef(null)   // EventSource
+  const termRef   = useRef(null)
+
+  const [cmdInput, setCmdInput] = useState('')
+  const [cmdError, setCmdError] = useState(null)
 
   const [params, setParams] = useState({
-    lr: '1e-3', batch: '32', epochs: '50',
-    optimizer: 'Adam', arch: 'TrajectoryLSTM', earlyExit: '1.0', hidden: '128',
+    lr: '1e-3', batch: '32', epochs: '30',
+    optimizer: 'Adam', arch: 'TrajectoryTransformer', earlyExit: '1.0', hidden: '128',
+    data: 'data/merged/missions.parquet', outputDir: 'models/transformer_production',
   })
   const set = k => e => setParams(p => ({ ...p, [k]: e.target.value }))
 
-  // called once per simulated epoch
-  const nextEpoch = (maxEpochs) => {
-    const ep = epochRef.current
-    if (ep > maxEpochs) return   // safety guard (interval already cleared in effect)
-
-    const idx   = Math.min(ep - 1, CURVES.length - 1)
-    const { train, val, auc } = CURVES[idx]
-    const lr    = ep > Math.floor(maxEpochs * 0.6) ? '5.00e-4' : '1.00e-3'
-    const epStr = String(ep).padStart(2, ' ')
-
-    // append to chart
-    setLiveData(prev => [...prev, { epoch: ep, train, val, auc }])
-
-    // append to terminal
-    const line = `Epoch [${epStr}/${maxEpochs}] | Loss: ${train} | Val: ${val} | AUC: ${auc} | lr=${lr}`
-    setLogs(prev => [...prev.slice(-100), ['ok', line]])
-
-    epochRef.current = ep + 1
-
-    // done?
-    if (ep >= maxEpochs) {
-      clearInterval(intervalRef.current)
-      setRunning(false)
-      setLogs(prev => [
-        ...prev,
-        ['dim', ''],
-        ['info', `▸ TRAINING COMPLETE — best AUC: ${auc} at epoch ${ep}`],
-        ['dim',  `▸ Model saved → models/production/best_model_${params.arch.includes('LSTM') ? 'lstm' : 'transformer'}_binary.pt`],
-        ['dim',  `▸ Metrics saved → models/production/metrics_${params.arch.includes('LSTM') ? 'lstm' : 'transformer'}_binary.json`],
-      ])
+  const applyCommand = () => {
+    if (!cmdInput.trim()) return
+    if (!cmdInput.includes('src.ml.train')) {
+      setCmdError('Not a train command — must contain src.ml.train')
+      return
     }
+    const parsed = parseTrainCommand(cmdInput)
+    if (Object.keys(parsed).length === 0) {
+      setCmdError('No recognizable flags found')
+      return
+    }
+    setParams(p => ({ ...p, ...parsed }))
+    setCmdError(null)
+    setCmdInput('')
   }
 
-  const toggleTraining = () => {
-    if (running) {
-      clearInterval(intervalRef.current)
-      setLogs(prev => [...prev, ['warn', '> TRAINING STOPPED BY USER.']])
+  // Check API health on mount
+  useEffect(() => {
+    fetch(`${API}/api/health`, { signal: AbortSignal.timeout(3000) })
+      .then(r => r.json())
+      .then(d => {
+        setApiOnline(true)
+        setLogs(prev => [
+          ...prev.slice(0, 2),
+          ['dim', `> DEVICE: ${d.device === 'cuda' ? `cuda (${d.gpu}, ${d.gpu_mem_gb} GB)` : 'cpu'}`],
+          ...prev.slice(3),
+        ])
+      })
+      .catch(() => {
+        setApiOnline(false)
+        setLogs(prev => [
+          ...prev.slice(0, 2),
+          ['warn', '> API OFFLINE — start: uvicorn src.api.main:app --port 8000'],
+          ...prev.slice(3),
+        ])
+      })
+  }, [])
+
+  const appendLog = (type, msg) =>
+    setLogs(prev => [...prev.slice(-120), [type, msg]])
+
+  const startTraining = async () => {
+    const maxEpochs = Math.max(1, parseInt(params.epochs) || 30)
+    setLiveData([])
+
+    // Start training job
+    let jid
+    try {
+      const res = await fetch(`${API}/api/train/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...params, epochs: maxEpochs }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const { job_id, command } = await res.json()
+      jid = job_id
+      setJobId(jid)
+    } catch (err) {
+      appendLog('warn', `> FAILED TO START: ${err.message}`)
       setRunning(false)
       return
     }
 
-    const maxEpochs = Math.max(1, parseInt(params.epochs) || 50)
-
-    // reset for a fresh run
-    epochRef.current = 1
-    setLiveData([])
     setLogs([
-      ['info', `> LAUNCHING: python3 -m src.ml.train --epochs ${maxEpochs} --model ${params.arch.includes('LSTM') ? 'lstm' : 'transformer'} --lr ${params.lr} --batch-size ${params.batch} --early-exit ${params.earlyExit}`],
-      ['dim',  `> BATCHES PER EPOCH: ${Math.ceil(7000 / parseInt(params.batch || 32))}`],
-      ['dim',  `> DEVICE: cuda (NVIDIA RTX 4060, 8.0 GB)`],
-      ['dim',  `> POS_WEIGHT: computing from training set...`],
+      ['info', `> LAUNCHING TRAINING JOB ${jid}`],
+      ['dim',  `> MODEL: ${params.arch}`],
+      ['dim',  `> LR=${params.lr}  BATCH=${params.batch}  EPOCHS=${maxEpochs}  EXIT=${params.earlyExit}`],
       ['dim',  ''],
     ])
-
     setRunning(true)
-    // kick off first epoch immediately, then interval
-    setTimeout(() => nextEpoch(maxEpochs), 400)
-    intervalRef.current = setInterval(() => nextEpoch(maxEpochs), 750 + Math.random() * 250)
+
+    // Connect to SSE stream
+    const es = new EventSource(`${API}/api/train/stream/${jid}`)
+    esRef.current = es
+
+    es.onmessage = (e) => {
+      let event
+      try { event = JSON.parse(e.data) } catch { return }
+
+      if (event.type === 'log') {
+        const typeMap = { '▸': 'info', 'Epoch': 'ok', 'WARN': 'warn', 'ERROR': 'warn' }
+        const cls = Object.entries(typeMap).find(([k]) => event.text.includes(k))?.[1] || 'dim'
+        appendLog(cls, event.text)
+      }
+
+      if (event.type === 'epoch') {
+        setLiveData(prev => [...prev, {
+          epoch: event.epoch,
+          train: event.train_loss,
+          val:   event.val_loss,
+          auc:   event.auc,
+        }])
+      }
+
+      if (event.type === 'done') {
+        es.close()
+        setRunning(false)
+        setJobId(null)
+        if (event.exit_code === 0) {
+          appendLog('info', '▸ TRAINING COMPLETE — model saved.')
+        } else if (event.exit_code === -1) {
+          appendLog('warn', '> TRAINING STOPPED BY USER.')
+        } else {
+          appendLog('warn', `> TRAINING FAILED (exit ${event.exit_code})`)
+        }
+      }
+    }
+
+    es.onerror = () => {
+      appendLog('warn', '> SSE CONNECTION LOST')
+      setRunning(false)
+    }
   }
 
-  useEffect(() => () => clearInterval(intervalRef.current), [])
+  const stopTraining = async () => {
+    esRef.current?.close()
+    if (jobId) {
+      await fetch(`${API}/api/train/stop/${jobId}`).catch(() => {})
+    }
+    appendLog('warn', '> TRAINING STOPPED BY USER.')
+    setRunning(false)
+    setJobId(null)
+  }
+
+  const toggleTraining = () => {
+    if (running) {
+      stopTraining()
+    } else {
+      startTraining()
+    }
+  }
+
+  useEffect(() => () => esRef.current?.close(), [])
 
   useEffect(() => {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight
   }, [logs])
 
-  // split liveData for the two charts
   const lossData = liveData.map(d => ({ epoch: d.epoch, train: d.train, val: d.val }))
   const aucData  = liveData.map(d => ({ epoch: d.epoch, auc: d.auc }))
   const bestAuc  = liveData.length ? Math.max(...liveData.map(d => d.auc)).toFixed(4) : '—'
-  const lastEp   = epochRef.current - 1
+  const lastEp   = liveData.length
 
   return (
     <div className="panel-content">
@@ -128,7 +217,54 @@ export default function Training() {
 
         {/* ── Left: hyperparams ── */}
         <div className="card">
-          <div className="card-hdr">HYPERPARAMETERS <span className="badge">CONF.02</span></div>
+          <div className="card-hdr">
+            HYPERPARAMETERS <span className="badge">CONF.02</span>
+          </div>
+
+          {/* Command paste box */}
+          <div style={{ marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '10px', color: 'var(--text-dim)', letterSpacing: '0.08em', marginBottom: '6px', fontFamily: 'var(--mono)' }}>
+              PASTE TRAIN COMMAND → AUTO-FILL
+            </div>
+            <textarea
+              className="field-input"
+              rows={2}
+              style={{ width: '100%', resize: 'vertical', fontSize: '10px', fontFamily: 'var(--mono)', lineHeight: 1.6 }}
+              placeholder="python3 -m src.ml.train --model transformer --epochs 30 ..."
+              value={cmdInput}
+              onChange={e => { setCmdInput(e.target.value); setCmdError(null) }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); applyCommand() } }}
+              disabled={running}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+              <button
+                onClick={applyCommand}
+                disabled={running || !cmdInput.trim()}
+                style={{
+                  background: 'transparent', border: '1px solid var(--border2)',
+                  color: 'var(--cyan)', fontFamily: 'var(--mono)', fontSize: '10px',
+                  letterSpacing: '0.08em', padding: '4px 12px', cursor: 'pointer',
+                  opacity: (!cmdInput.trim() || running) ? 0.4 : 1,
+                }}
+              >
+                APPLY
+              </button>
+              {cmdError && <span style={{ fontSize: '10px', color: 'var(--red)', fontFamily: 'var(--mono)' }}>{cmdError}</span>}
+              {!cmdError && !cmdInput && <span style={{ fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'var(--mono)' }}>or press Enter</span>}
+            </div>
+          </div>
+
+          {/* API status indicator */}
+          <div style={{ marginBottom: '14px', padding: '7px 10px', background: 'var(--bg3)', border: '1px solid var(--border)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0,
+              background: apiOnline == null ? '#888888' : apiOnline ? 'var(--green)' : 'var(--red)',
+              boxShadow: apiOnline ? '0 0 6px var(--green)' : 'none',
+            }} />
+            <span style={{ color: 'var(--text-dim)', letterSpacing: '0.06em' }}>
+              API: {apiOnline == null ? 'CHECKING...' : apiOnline ? 'ONLINE' : 'OFFLINE'}
+            </span>
+          </div>
 
           {[
             ['LEARNING RATE',   'lr'],
@@ -159,14 +295,16 @@ export default function Training() {
           <div className="field">
             <div className="field-label">MODEL ARCH</div>
             <select className="field-select" value={params.arch} onChange={set('arch')} disabled={running}>
-              <option>TrajectoryLSTM</option>
               <option>TrajectoryTransformer</option>
+              <option>TrajectoryLSTM</option>
             </select>
           </div>
 
           <button
             className={`launch-btn${running ? ' running' : ''}`}
             onClick={toggleTraining}
+            disabled={apiOnline === false}
+            title={apiOnline === false ? 'Start the FastAPI backend first' : ''}
           >
             {running ? '⏹  STOP TRAINING' : '⚡  LAUNCH TRAINING'}
           </button>
@@ -180,7 +318,7 @@ export default function Training() {
               <div style={{ height: '3px', background: 'var(--border2)', marginBottom: '8px' }}>
                 <div style={{
                   height: '100%',
-                  width: `${(lastEp / (parseInt(params.epochs) || 50)) * 100}%`,
+                  width: `${(lastEp / (parseInt(params.epochs) || 30)) * 100}%`,
                   background: running ? 'var(--cyan)' : 'var(--green)',
                   transition: 'width 0.4s ease',
                 }} />
@@ -191,6 +329,11 @@ export default function Training() {
               <div className="stat-row">
                 BEST AUC <span style={{ color: 'var(--green)' }}>{bestAuc}</span>
               </div>
+              {jobId && (
+                <div className="stat-row">
+                  JOB <span style={{ color: 'var(--text-dim)' }}>{jobId}</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -227,7 +370,7 @@ export default function Training() {
             </div>
           </div>
 
-          {/* Charts — both start empty, grow as epochs come in */}
+          {/* Charts */}
           <div className="g2">
             <div className="chart-box">
               <div className="chart-label">

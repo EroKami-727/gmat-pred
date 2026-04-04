@@ -276,7 +276,7 @@ def create_dataloaders(
     import pyarrow.parquet as pq
     pf = pq.ParquetFile(parquet_path)
     # Just read mission_id column
-    mission_ids = pf.read(columns=["mission_id"])["mission_id"].unique().to_numpy()
+    mission_ids = pf.read(columns=["mission_id"])["mission_id"].unique().to_numpy().copy()
 
     rng = np.random.default_rng(seed)
     rng.shuffle(mission_ids)

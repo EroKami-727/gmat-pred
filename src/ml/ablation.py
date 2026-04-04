@@ -27,7 +27,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from src.ml.dataset import create_dataloaders
-from src.ml.model import TrajectoryLSTM
+from src.ml.model import TrajectoryLSTM, TrajectoryTransformer
 from src.ml.train import train_one_epoch, validate, _compute_metrics
 
 
@@ -40,10 +40,11 @@ def run_single(
     epochs: int,
     batch_size: int,
     hidden_dim: int,
-    num_layers: float,
+    num_layers: int,
     lr: float,
     output_dir: Path,
     device: torch.device,
+    model_type: str = "transformer",
 ) -> dict:
     """Train one LSTM for a given early_exit_frac and return metrics dict."""
 
@@ -66,16 +67,23 @@ def run_single(
     pos_weight = torch.tensor([n_neg / n_pos], device=device) if n_pos > 0 else torch.tensor([1.0], device=device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
-    model = TrajectoryLSTM(
-        input_dim=input_dim,
-        hidden_dim=hidden_dim,
-        num_layers=num_layers,
-        output_dim=1,
-        task="binary",
-    ).to(device)
+    if model_type == "transformer":
+        model = TrajectoryTransformer(
+            input_dim=input_dim,
+            output_dim=1,
+            task="binary",
+        ).to(device)
+    else:
+        model = TrajectoryLSTM(
+            input_dim=input_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            output_dim=1,
+            task="binary",
+        ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=3, factor=0.5, verbose=False)
+    scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=3, factor=0.5)
 
     best_val_loss = float("inf")
     best_auc = 0.0
@@ -105,11 +113,11 @@ def run_single(
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_auc = auc
-            model_path = output_dir / f"best_model_lstm_binary_exit{label}.pt"
+            model_path = output_dir / f"best_model_{model_type}_binary_exit{label}.pt"
             torch.save(model.state_dict(), model_path)
 
     # Final test evaluation
-    best_model_path = output_dir / f"best_model_lstm_binary_exit{label}.pt"
+    best_model_path = output_dir / f"best_model_{model_type}_binary_exit{label}.pt"
     model.load_state_dict(torch.load(best_model_path, weights_only=True))
     test_loss, test_acc, test_preds, test_labels_list = validate(model, test_loader, criterion, device, "binary")
     test_f1, test_auc = _compute_metrics(test_preds, test_labels_list) if test_preds else (0.0, 0.0)
@@ -123,6 +131,7 @@ def run_single(
     result = {
         "early_exit_frac": early_exit_frac,
         "early_exit_pct": int(early_exit_frac * 100),
+        "model_type": model_type,
         "test_acc": round(test_acc, 6),
         "test_loss": round(test_loss, 6),
         "test_f1": round(test_f1, 6),
@@ -139,6 +148,7 @@ def run_single(
 def main():
     parser = argparse.ArgumentParser(description="OrbitGuard Ablation — Early-Exit Sweep")
     parser.add_argument("--data", type=str, default="data/merged/missions.parquet")
+    parser.add_argument("--model", type=str, choices=["lstm", "transformer"], default="transformer")
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=0.001)
@@ -163,6 +173,7 @@ def main():
     report_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n▸ Ablation sweep over fractions: {args.fractions}")
+    print(f"▸ Model: {args.model}")
     print(f"▸ Epochs per run: {args.epochs}")
     print(f"▸ Data: {args.data}")
 
@@ -178,6 +189,7 @@ def main():
             lr=args.lr,
             output_dir=output_dir,
             device=device,
+            model_type=args.model,
         )
         all_results.append(result)
 

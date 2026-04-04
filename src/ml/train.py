@@ -138,7 +138,7 @@ def main():
     parser = argparse.ArgumentParser(description="OrbitGuard LSTM/Transformer Trainer")
     parser.add_argument("--data", type=str, default="data/missions.parquet")
     parser.add_argument("--task", type=str, choices=["binary", "multiclass", "regression"], default="binary")
-    parser.add_argument("--model", type=str, choices=["lstm", "transformer"], default="lstm")
+    parser.add_argument("--model", type=str, choices=["lstm", "transformer"], default="transformer")
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=0.001)
@@ -204,7 +204,7 @@ def main():
         ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=3, factor=0.5, verbose=False)
+    scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=3, factor=0.5)
 
     # 3. Training Loop
     os.makedirs(args.output_dir, exist_ok=True)
