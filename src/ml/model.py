@@ -116,6 +116,12 @@ class TrajectoryTransformer(nn.Module):
 
     Defaults are tuned for the OrbitGuard 13-feature, ~576-step sequences:
       d_model=128, nhead=8, num_layers=4, dim_feedforward=512
+
+    Architecture Ablation Flags
+    ---------------------------
+    use_cls_token    : if False, switches to mean pooling over non-padding positions.
+    use_pos_encoding : if False, skips the sinusoidal positional encoding step.
+    Both flags are used by arch_ablation.py; the production model keeps both True.
     """
     def __init__(
         self,
@@ -127,19 +133,24 @@ class TrajectoryTransformer(nn.Module):
         output_dim: int = 1,
         dropout: float = 0.1,
         max_seq_len: int = 1000,
-        task: str = "binary"
+        task: str = "binary",
+        use_cls_token: bool = True,
+        use_pos_encoding: bool = True,
     ):
         super().__init__()
         self.task = task
         self.d_model = d_model
+        self.use_cls_token = use_cls_token
+        self.use_pos_encoding = use_pos_encoding
 
         # Project raw features into model dimension
         self.embedding = nn.Linear(input_dim, d_model)
         self.pos_encoder = PositionalEncoding(d_model, max_seq_len + 1)  # +1 for CLS
 
-        # Learnable [CLS] token
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        # Learnable [CLS] token (only allocated when used)
+        if use_cls_token:
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+            nn.init.trunc_normal_(self.cls_token, std=0.02)
 
         encoder_layers = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -168,26 +179,37 @@ class TrajectoryTransformer(nn.Module):
         """
         B = x.size(0)
 
-        # 1. Embed features and add positional encoding
+        # 1. Embed features
         x = self.embedding(x) * math.sqrt(self.d_model)
 
-        # 2. Prepend CLS token
-        cls = self.cls_token.expand(B, 1, self.d_model)
-        x = torch.cat([cls, x], dim=1)          # (B, 1+seq_len, d_model)
-        x = self.pos_encoder(x)
+        # 2. Optionally prepend CLS token, then apply positional encoding
+        if self.use_cls_token:
+            cls = self.cls_token.expand(B, 1, self.d_model)
+            x = torch.cat([cls, x], dim=1)          # (B, 1+seq_len, d_model)
+            if self.use_pos_encoding:
+                x = self.pos_encoder(x)
+            if mask is not None:
+                cls_mask = torch.zeros(B, 1, dtype=torch.bool, device=mask.device)
+                mask = torch.cat([cls_mask, mask], dim=1)  # (B, 1+seq_len)
+        else:
+            if self.use_pos_encoding:
+                x = self.pos_encoder(x)
 
-        # 3. Extend padding mask to cover the CLS token (never masked)
-        if mask is not None:
-            cls_mask = torch.zeros(B, 1, dtype=torch.bool, device=mask.device)
-            mask = torch.cat([cls_mask, mask], dim=1)  # (B, 1+seq_len)
-
-        # 4. Transformer encoder
+        # 3. Transformer encoder
         output = self.transformer_encoder(x, src_key_padding_mask=mask)
 
-        # 5. Use CLS token output for classification
-        cls_out = output[:, 0, :]   # (B, d_model)
+        # 4. Pool to a single vector
+        if self.use_cls_token:
+            pooled = output[:, 0, :]   # CLS token output
+        else:
+            # Mean pooling over actual (non-padding) positions
+            if mask is not None:
+                valid = (~mask).unsqueeze(-1).float()
+                pooled = (output * valid).sum(dim=1) / valid.sum(dim=1).clamp(min=1)
+            else:
+                pooled = output.mean(dim=1)
 
-        out = self.fc(cls_out)
+        out = self.fc(pooled)
 
         if self.task in ["binary", "regression"]:
             return out.squeeze(1)

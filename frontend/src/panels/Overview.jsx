@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-
-const API = 'http://localhost:8000'
+import { API } from '../lib/api.js'
 
 function Gauge({ value = null }) {
   const display = value != null ? value : 0.0

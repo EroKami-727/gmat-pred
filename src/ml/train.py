@@ -145,6 +145,7 @@ def main():
     parser.add_argument("--hidden-dim", type=int, default=128)
     parser.add_argument("--num-layers", type=int, default=2)
     parser.add_argument("--early-exit", type=float, default=1.0, help="Fraction of trajectory to use (0.1-1.0)")
+    parser.add_argument("--seed",       type=int,   default=42,  help="Random seed for data split and weight init")
     parser.add_argument("--output-dir", type=str, default="models")
     args = parser.parse_args()
 
@@ -165,6 +166,7 @@ def main():
         target_mode=args.task,
         early_exit_frac=args.early_exit,
         batch_size=args.batch_size,
+        seed=args.seed,
     )
 
     # 2. Initialize Model — pull input_dim dynamically from dataset

@@ -4,8 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from 'recharts'
-
-const API = 'http://localhost:8000'
+import { API } from '../lib/api.js'
 
 // Parse a python3 -m src.ml.train ... command into form params
 function parseTrainCommand(cmd) {

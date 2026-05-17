@@ -30,6 +30,7 @@ python3 -m src.ml.train \
   --model transformer \
   --epochs 30 \
   --early-exit 0.4 \
+  --seed 42 \
   --output-dir models/transformer_production
 
 # Full ablation sweep (feeds Ablation panel with real numbers)
@@ -37,6 +38,40 @@ python3 -m src.ml.ablation \
   --data data/merged/missions.parquet \
   --model transformer \
   --epochs 30
+```
+
+---
+
+## Paper experiments
+
+```bash
+# 1. Baselines — XGBoost, energy threshold heuristic, majority class
+python3 -m src.ml.baselines \
+  --data data/merged/missions.parquet \
+  --exit-fracs 0.1 0.2 0.3 0.4 0.6 1.0 \
+  --output reports/baselines/baseline_results.json
+
+# 2. Multi-seed robustness — 5 seeds, reports mean ± std
+python3 -m src.ml.multi_seed \
+  --data data/merged/missions.parquet \
+  --early-exit 0.4 \
+  --epochs 30 \
+  --output-dir reports/multi_seed
+
+# 3. Architecture ablation — CLS token, pos encoding, context features, LSTM
+python3 -m src.ml.arch_ablation \
+  --data data/merged/missions.parquet \
+  --early-exit 0.4 \
+  --epochs 30 \
+  --output-dir reports/arch_ablation
+
+# 4. Generate publication tables (Markdown + LaTeX) from all experiment outputs
+python3 -m src.ml.results_table \
+  --ablation   reports/ablation/ablation_results.json \
+  --baselines  reports/baselines/baseline_results.json \
+  --arch       reports/arch_ablation/arch_ablation_results.json \
+  --multi-seed reports/multi_seed/summary.json \
+  --output-dir reports/tables
 ```
 
 ---

@@ -8,7 +8,7 @@ Predicts failing spacecraft trajectories early using a Transformer on physics-in
 
 ## Stack
 
-- **ML:** PyTorch `TrajectoryTransformer` (primary). `TrajectoryLSTM` exists but deprecated.
+- **ML:** PyTorch `TrajectoryTransformer` (primary). `TrajectoryLSTM` is the architecture baseline in arch_ablation.
 - **Backend:** FastAPI at `src/api/main.py` — `uvicorn src.api.main:app --port 8000` from project root
 - **Frontend:** React 18 + Vite (no TypeScript), Recharts, Tailwind v4 (unreliable — use inline styles)
 - **Data:** 10K missions, 85.3M rows, 13.44 GB Parquet at `data/merged/missions.parquet`
@@ -63,13 +63,18 @@ Production model trained at `--early-exit 0.4`. In simulator, `min_elapsed_pct=0
 ```
 src/
   ml/
-    model.py      TrajectoryLSTM, TrajectoryTransformer
-    dataset.py    TrajectoryDataset, create_dataloaders
-    train.py      training loop, default: --model transformer
-    ablation.py   early-exit fraction sweep [0.1,0.2,0.3,0.4,0.6,1.0]
-    evaluate.py   inference + metrics report on any parquet
+    model.py         TrajectoryLSTM, TrajectoryTransformer
+                       → Transformer accepts use_cls_token, use_pos_encoding flags
+    dataset.py       TrajectoryDataset, create_dataloaders
+    train.py         training loop — accepts --seed for reproducibility
+    ablation.py      early-exit fraction sweep [0.1,0.2,0.3,0.4,0.6,1.0]
+    evaluate.py      inference + metrics report on any parquet
+    baselines.py     MajorityClass, EnergyThreshold, XGBoost baselines
+    multi_seed.py    5-seed robustness experiment → reports/multi_seed/
+    arch_ablation.py component ablation (CLS, pos enc, context feats, LSTM)
+    results_table.py reads all report JSONs → Markdown + LaTeX tables
   api/
-    main.py       FastAPI endpoints (see below)
+    main.py          FastAPI endpoints (see below)
   data_collection/
     build_database.py   GMAT sim runner
     merge_datasets.py   merge parquet runs
@@ -85,7 +90,19 @@ frontend/src/
 
 reports/
   ablation/
-    ablation_results.json    output of ablation sweep, consumed by Ablation panel
+    ablation_results.json       early-exit sweep, consumed by Ablation panel
+  baselines/
+    baseline_results.json       XGBoost + heuristic baselines per exit fraction
+  multi_seed/
+    seed_{N}_metrics.json       per-seed training history
+    summary.json                mean ± std across all seeds
+  arch_ablation/
+    arch_ablation_results.json  component contribution deltas
+  tables/
+    main_comparison.{md,tex}    Table 1: Transformer vs baselines
+    arch_ablation.{md,tex}      Table 2: Architecture ablation
+    multi_seed.{md,tex}         Table 3: Robustness statistics
+    summary.json                all experiment data in one place
 
 models/
   transformer_production/

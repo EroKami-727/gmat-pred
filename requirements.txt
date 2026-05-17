@@ -7,5 +7,6 @@ fastparquet
 matplotlib
 torch
 scikit-learn
+xgboost
 fastapi
 uvicorn[standard]

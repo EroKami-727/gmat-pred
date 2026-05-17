@@ -3,8 +3,7 @@ import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
-
-const API = 'http://localhost:8000'
+import { API } from '../lib/api.js'
 
 // Shown until real data loads
 const PLACEHOLDER = [

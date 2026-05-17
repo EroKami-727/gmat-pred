@@ -231,6 +231,41 @@ async def get_metrics(arch: str = Query("transformer"), task: str = Query("binar
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Generic Job Helper
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _start_job(cmd: list[str]) -> str:
+    """Launch a subprocess, stream its stdout into the shared log queue, return job_id."""
+    job_id = str(uuid.uuid4())[:8]
+    _log_queues[job_id] = []
+
+    def run():
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, cwd=str(Path.cwd()),
+        )
+        _processes[job_id] = proc
+        for line in proc.stdout:
+            _log_queues[job_id].append(line.rstrip())
+        proc.wait()
+        _log_queues[job_id].append(f"__DONE__:{proc.returncode}")
+
+    threading.Thread(target=run, daemon=True).start()
+    return job_id
+
+
+# Generic stream / stop aliases (any job_id, not just training)
+@app.get("/api/jobs/stream/{job_id}")
+async def stream_job(job_id: str):
+    return await stream_training(job_id)
+
+
+@app.get("/api/jobs/stop/{job_id}")
+async def stop_job(job_id: str):
+    return await stop_training(job_id)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Training Endpoints
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -490,3 +525,107 @@ async def simulator_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Experiment Endpoints — Baselines, Multi-Seed, Arch Ablation, Tables
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/experiments/baselines/start")
+async def start_baselines(config: dict):
+    fracs = str(config.get("exitFracs", "0.1 0.2 0.3 0.4 0.6 1.0")).split()
+    cmd = [
+        "python3", "-m", "src.ml.baselines",
+        "--data",              str(config.get("data", "data/merged/missions.parquet")),
+        "--exit-fracs",        *fracs,
+        "--seed",              str(config.get("seed", 42)),
+        "--downsample-factor", str(config.get("downsampleFactor", 15)),
+    ]
+    job_id = _start_job(cmd)
+    return {"job_id": job_id, "command": " ".join(cmd)}
+
+
+@app.get("/api/experiments/baselines/results")
+async def get_baselines_results():
+    path = Path("reports/baselines/baseline_results.json")
+    if not path.exists():
+        return JSONResponse(status_code=404, content={"error": "No baseline results yet. Run the baselines experiment first."})
+    return json.loads(path.read_text())
+
+
+@app.post("/api/experiments/multi_seed/start")
+async def start_multi_seed(config: dict):
+    seeds = str(config.get("seeds", "42 123 456 789 1024")).split()
+    cmd = [
+        "python3", "-m", "src.ml.multi_seed",
+        "--data",        str(config.get("data", "data/merged/missions.parquet")),
+        "--seeds",       *seeds,
+        "--early-exit",  str(config.get("earlyExit", "0.4")),
+        "--epochs",      str(config.get("epochs", 30)),
+        "--batch-size",  str(config.get("batchSize", 32)),
+        "--lr",          str(config.get("lr", "1e-3")),
+        "--output-dir",  "reports/multi_seed",
+    ]
+    job_id = _start_job(cmd)
+    return {"job_id": job_id, "command": " ".join(cmd)}
+
+
+@app.get("/api/experiments/multi_seed/results")
+async def get_multi_seed_results():
+    path = Path("reports/multi_seed/summary.json")
+    if not path.exists():
+        return JSONResponse(status_code=404, content={"error": "No multi-seed results yet. Run the multi-seed experiment first."})
+    return json.loads(path.read_text())
+
+
+@app.post("/api/experiments/arch_ablation/start")
+async def start_arch_ablation(config: dict):
+    variants = config.get("variants", ["full_transformer", "no_cls_token", "no_pos_encoding", "no_context_features", "lstm"])
+    cmd = [
+        "python3", "-m", "src.ml.arch_ablation",
+        "--data",        str(config.get("data", "data/merged/missions.parquet")),
+        "--early-exit",  str(config.get("earlyExit", "0.4")),
+        "--epochs",      str(config.get("epochs", 30)),
+        "--seed",        str(config.get("seed", 42)),
+        "--variants",    *variants,
+        "--output-dir",  "reports/arch_ablation",
+    ]
+    job_id = _start_job(cmd)
+    return {"job_id": job_id, "command": " ".join(cmd)}
+
+
+@app.get("/api/experiments/arch_ablation/results")
+async def get_arch_ablation_results():
+    path = Path("reports/arch_ablation/arch_ablation_results.json")
+    if not path.exists():
+        return JSONResponse(status_code=404, content={"error": "No arch ablation results yet. Run the arch ablation experiment first."})
+    return json.loads(path.read_text())
+
+
+@app.post("/api/experiments/tables/start")
+async def start_tables(config: dict):
+    cmd = [
+        "python3", "-m", "src.ml.results_table",
+        "--ablation",   "reports/ablation/ablation_results.json",
+        "--baselines",  "reports/baselines/baseline_results.json",
+        "--arch",       "reports/arch_ablation/arch_ablation_results.json",
+        "--multi-seed", "reports/multi_seed/summary.json",
+        "--output-dir", "reports/tables",
+    ]
+    job_id = _start_job(cmd)
+    return {"job_id": job_id, "command": " ".join(cmd)}
+
+
+@app.get("/api/experiments/tables")
+async def get_tables():
+    """Return the content of all generated table files (.md and .tex)."""
+    tables_dir = Path("reports/tables")
+    result = {}
+    for name in ["main_comparison", "arch_ablation", "multi_seed"]:
+        md_path  = tables_dir / f"{name}.md"
+        tex_path = tables_dir / f"{name}.tex"
+        result[name] = {
+            "md":  md_path.read_text()  if md_path.exists()  else None,
+            "tex": tex_path.read_text() if tex_path.exists() else None,
+        }
+    return result
