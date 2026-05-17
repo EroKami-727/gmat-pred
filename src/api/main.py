@@ -629,3 +629,29 @@ async def get_tables():
             "tex": tex_path.read_text() if tex_path.exists() else None,
         }
     return result
+
+
+@app.post("/api/experiments/interpretability/start")
+async def start_interpretability(config: dict):
+    cmd = [
+        "python3", "-m", "src.ml.interpretability",
+        "--data",               str(config.get("data",             "data/merged/missions.parquet")),
+        "--model-path",         str(config.get("modelPath",        "models/transformer_production/best_model_transformer_binary.pt")),
+        "--scaler-path",        str(config.get("scalerPath",       "models/transformer_production/scaler_transformer_binary.pkl")),
+        "--n-sample-missions",  str(config.get("nSampleMissions",  10)),
+        "--n-attr-missions",    str(config.get("nAttrMissions",    200)),
+        "--n-failure-missions", str(config.get("nFailureMissions", 500)),
+        "--early-exit",         str(config.get("earlyExit",        0.4)),
+        "--seed",               str(config.get("seed",             42)),
+        "--output-dir",         "reports/interpretability",
+    ]
+    job_id = _start_job(cmd)
+    return {"job_id": job_id, "command": " ".join(cmd)}
+
+
+@app.get("/api/experiments/interpretability/results")
+async def get_interpretability_results():
+    path = Path("reports/interpretability/summary.json")
+    if not path.exists():
+        return JSONResponse(status_code=404, content={"error": "No interpretability results yet. Run the analysis first."})
+    return json.loads(path.read_text())

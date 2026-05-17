@@ -214,3 +214,64 @@ class TrajectoryTransformer(nn.Module):
         if self.task in ["binary", "regression"]:
             return out.squeeze(1)
         return out
+
+    def forward_with_attention(
+        self, x: torch.Tensor, mask: torch.Tensor = None
+    ) -> tuple:
+        """
+        Identical to forward() but also returns per-layer attention weights.
+        Only meaningful when use_cls_token=True (production config).
+
+        Runs each TransformerEncoderLayer manually with need_weights=True so
+        we can inspect what the CLS token attends to at each layer.
+
+        Returns
+        -------
+        logit        : (batch,)
+        attn_weights : list[(batch, nhead, seq+1, seq+1)], one per encoder layer
+                       CLS-to-sequence slice: weights[layer][:, :, 0, 1:]
+        """
+        B = x.size(0)
+        x = self.embedding(x) * math.sqrt(self.d_model)
+
+        if self.use_cls_token:
+            cls = self.cls_token.expand(B, 1, self.d_model)
+            x = torch.cat([cls, x], dim=1)
+        if self.use_pos_encoding:
+            x = self.pos_encoder(x)
+        if mask is not None and self.use_cls_token:
+            cls_mask = torch.zeros(B, 1, dtype=torch.bool, device=mask.device)
+            mask = torch.cat([cls_mask, mask], dim=1)
+
+        # Run each encoder layer manually (Pre-LN: norm → attn → residual → norm → FFN → residual)
+        attn_weights_list = []
+        hidden = x
+        for layer in self.transformer_encoder.layers:
+            normed = layer.norm1(hidden)
+            attn_out, attn_w = layer.self_attn(
+                normed, normed, normed,
+                key_padding_mask=mask,
+                need_weights=True,
+                average_attn_weights=False,  # keep per-head: (B, nhead, T, T)
+            )
+            hidden = hidden + layer.dropout1(attn_out)
+            hidden = hidden + layer.dropout2(
+                layer.linear2(layer.dropout(layer.activation(layer.linear1(layer.norm2(hidden)))))
+            )
+            attn_weights_list.append(attn_w)
+
+        hidden = self.transformer_encoder.norm(hidden)
+
+        if self.use_cls_token:
+            pooled = hidden[:, 0, :]
+        else:
+            if mask is not None:
+                valid = (~mask).unsqueeze(-1).float()
+                pooled = (hidden * valid).sum(dim=1) / valid.sum(dim=1).clamp(min=1)
+            else:
+                pooled = hidden.mean(dim=1)
+
+        out = self.fc(pooled)
+        if self.task in ["binary", "regression"]:
+            return out.squeeze(1), attn_weights_list
+        return out, attn_weights_list

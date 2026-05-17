@@ -542,9 +542,243 @@ function TablesTab() {
 }
 
 
+// ─── Interpretability Tab ───────────────────────────────────────────────────
+
+function AttentionHeatmap({ mission }) {
+  const layers = mission.attention_by_layer
+  if (!layers?.length) return null
+  const N = layers[0].length
+
+  return (
+    <div>
+      <div style={{ fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'var(--mono)', marginBottom: '6px', letterSpacing: '0.06em' }}>
+        CLS ATTENTION BY LAYER — {N} timestep bins · {layers.length} layers · averaged across {8} heads
+      </div>
+      {layers.map((layer, li) => {
+        const max = Math.max(...layer) || 1
+        return (
+          <div key={li} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+            <span style={{ width: '38px', fontSize: '9px', color: 'var(--text-dim)', fontFamily: 'var(--mono)', flexShrink: 0 }}>
+              L{li}
+            </span>
+            <div style={{ display: 'flex', gap: '1px', flex: 1 }}>
+              {layer.map((w, ti) => (
+                <div key={ti} title={`t=${ti} w=${w.toFixed(3)}`} style={{
+                  flex: 1, height: '16px',
+                  background: `rgba(80, 200, 220, ${(w / max) * 0.85 + 0.05})`,
+                }} />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', paddingLeft: '44px' }}>
+        <span style={{ fontSize: '9px', color: 'var(--text-dim)', fontFamily: 'var(--mono)' }}>0%</span>
+        <span style={{ fontSize: '9px', color: 'var(--text-dim)', fontFamily: 'var(--mono)' }}>100% trajectory</span>
+      </div>
+    </div>
+  )
+}
+
+function FeatureImportanceChart({ data }) {
+  const sorted = data.sorted_features ?? []
+  const byFeat = data.by_feature ?? {}
+  if (!sorted.length) return null
+
+  return (
+    <div>
+      <div style={{ fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'var(--mono)', marginBottom: '8px', letterSpacing: '0.06em' }}>
+        MEAN |GRADIENT × INPUT| — normalized, n={data.n_missions} missions
+      </div>
+      {sorted.map((feat, i) => {
+        const val = byFeat[feat] ?? 0
+        return (
+          <div key={feat} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+            <span style={{ width: '120px', fontSize: '10px', color: i < 3 ? 'var(--cyan)' : 'var(--text-dim)', fontFamily: 'var(--mono)', flexShrink: 0 }}>
+              {feat}
+            </span>
+            <div style={{ flex: 1, height: '10px', background: 'var(--bg3)', border: '1px solid var(--border)' }}>
+              <div style={{
+                height: '100%',
+                width: `${val * 100}%`,
+                background: i < 3 ? 'var(--cyan)' : '#555555',
+                transition: 'width 0.3s ease',
+              }} />
+            </div>
+            <span style={{ width: '38px', fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'var(--mono)', textAlign: 'right' }}>
+              {val.toFixed(3)}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function FailureTypeTable({ data }) {
+  const entries = Object.entries(data).sort((a, b) => (b[1].auc ?? 0) - (a[1].auc ?? 0))
+  if (!entries.length) return null
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', fontFamily: 'var(--mono)' }}>
+      <thead>
+        <tr>
+          {['Failure Type', 'N', 'AUC', 'F1', 'Acc'].map(h => (
+            <th key={h} style={{ textAlign: 'left', padding: '5px 8px', color: 'var(--text-dim)', borderBottom: '1px solid var(--border)', fontWeight: 'normal', letterSpacing: '0.06em' }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {entries.map(([ft, m]) => {
+          const auc = m.auc
+          const aucColor = auc == null ? 'var(--text-dim)' : auc >= 0.95 ? 'var(--green)' : auc >= 0.80 ? 'var(--cyan)' : 'var(--red)'
+          return (
+            <tr key={ft} style={{ borderBottom: '1px solid var(--border)' }}>
+              <td style={{ padding: '5px 8px', color: 'var(--text)' }}>{ft}</td>
+              <td style={{ padding: '5px 8px', color: 'var(--text-dim)' }}>{m.n}</td>
+              <td style={{ padding: '5px 8px', color: aucColor }}>{auc != null ? auc.toFixed(3) : 'N/A'}</td>
+              <td style={{ padding: '5px 8px' }}>{m.f1.toFixed(3)}</td>
+              <td style={{ padding: '5px 8px' }}>{(m.acc * 100).toFixed(1)}%</td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
+function InterpretResults({ data }) {
+  const [selectedIdx, setSelectedIdx] = useState(0)
+  const missions = data.attention_missions ?? []
+  const selected = missions[selectedIdx]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+      {/* Attention heatmap */}
+      {missions.length > 0 && (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div className="card-hdr" style={{ margin: 0 }}>ATTENTION HEATMAP</div>
+            <select
+              value={selectedIdx}
+              onChange={e => setSelectedIdx(Number(e.target.value))}
+              style={{ background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: '10px', padding: '4px 6px' }}
+            >
+              {missions.map((m, i) => (
+                <option key={i} value={i}>
+                  Mission {m.mission_id} — {m.failure_type} (P(fail)={m.prob_fail.toFixed(2)})
+                </option>
+              ))}
+            </select>
+          </div>
+          {selected && (
+            <>
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '10px' }}>
+                {[
+                  ['TRUE LABEL', selected.true_label === 1 ? 'SUCCESS' : 'FAILURE'],
+                  ['FAILURE TYPE', selected.failure_type],
+                  ['P(FAIL)', selected.prob_fail.toFixed(4)],
+                  ['TIMESTEPS', selected.n_timesteps],
+                ].map(([k, v]) => (
+                  <div key={k}>
+                    <div style={{ fontSize: '9px', color: 'var(--text-dim)', fontFamily: 'var(--mono)', letterSpacing: '0.06em' }}>{k}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--cyan)', fontFamily: 'var(--mono)' }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <AttentionHeatmap mission={selected} />
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Feature importance */}
+      {data.feature_attribution?.sorted_features?.length > 0 && (
+        <div className="card">
+          <div className="card-hdr">FEATURE IMPORTANCE</div>
+          <FeatureImportanceChart data={data.feature_attribution} />
+        </div>
+      )}
+
+      {/* Failure type breakdown */}
+      {Object.keys(data.failure_type_breakdown ?? {}).length > 0 && (
+        <div className="card">
+          <div className="card-hdr">FAILURE-TYPE BREAKDOWN (sorted by AUC)</div>
+          <FailureTypeTable data={data.failure_type_breakdown} />
+          <div style={{ marginTop: '8px', fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'var(--mono)' }}>
+            Green = easy to detect early · Red = hard to detect early
+          </div>
+        </div>
+      )}
+
+    </div>
+  )
+}
+
+function InterpretTab() {
+  const [params, setParams] = useState({
+    nSampleMissions:  '10',
+    nAttrMissions:    '200',
+    nFailureMissions: '500',
+    earlyExit:        '0.4',
+    seed:             '42',
+  })
+  const [results, setResults] = useState(null)
+  const set = k => e => setParams(p => ({ ...p, [k]: e.target.value }))
+
+  const loadResults = () =>
+    fetch(`${API}/api/experiments/interpretability/results`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setResults(d))
+      .catch(() => {})
+
+  useEffect(() => { loadResults() }, [])
+  const exp = useExperiment('/api/experiments/interpretability/start', loadResults)
+
+  return (
+    <div className="g-left-right">
+      <div className="card">
+        <div className="card-hdr">INTERPRETABILITY <span className="badge">EXP.05</span></div>
+        <ApiStatus apiOnline={exp.apiOnline} />
+
+        <Field label="SAMPLE MISSIONS (attention + IG)" value={params.nSampleMissions}  onChange={set('nSampleMissions')}  disabled={exp.running} />
+        <Field label="ATTRIBUTION MISSIONS"              value={params.nAttrMissions}    onChange={set('nAttrMissions')}    disabled={exp.running} />
+        <Field label="FAILURE-TYPE MISSIONS"             value={params.nFailureMissions} onChange={set('nFailureMissions')} disabled={exp.running} />
+        <Field label="EARLY EXIT FRACTION"               value={params.earlyExit}        onChange={set('earlyExit')}        disabled={exp.running} />
+        <Field label="SEED"                              value={params.seed}             onChange={set('seed')}             disabled={exp.running} />
+
+        <RunButton running={exp.running} apiOnline={exp.apiOnline}
+          onStart={() => exp.start(params)} onStop={exp.stop} label="RUN ANALYSIS"
+        />
+
+        <div style={{ marginTop: '14px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+          {[
+            ['ATTENTION', 'CLS→seq weights, all 4 layers'],
+            ['ATTRIBUTION', 'Gradient × Input saliency'],
+            ['BREAKDOWN', '8 failure classes vs early-exit AUC'],
+            ['OUTPUT', 'reports/interpretability/summary.json'],
+          ].map(([k, v]) => (
+            <div key={k} className="stat-row">{k} <span style={{ color: 'var(--text-dim)', fontSize: '10px' }}>{v}</span></div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div className="card" style={{ padding: '14px 16px' }}>
+          <div className="card-hdr">LIVE OUTPUT</div>
+          <Terminal logs={exp.logs} termRef={exp.termRef} />
+        </div>
+        {results && <InterpretResults data={results} />}
+      </div>
+    </div>
+  )
+}
+
+
 // ─── Main Panel ─────────────────────────────────────────────────────────────
 
-const EXP_TABS = ['BASELINES', 'MULTI-SEED', 'ARCH ABL', 'TABLES']
+const EXP_TABS = ['BASELINES', 'MULTI-SEED', 'ARCH ABL', 'INTERPRET', 'TABLES']
 
 export default function Experiments() {
   const [active, setActive] = useState('BASELINES')
@@ -580,6 +814,7 @@ export default function Experiments() {
       {active === 'BASELINES'  && <BaselinesTab />}
       {active === 'MULTI-SEED' && <MultiSeedTab />}
       {active === 'ARCH ABL'   && <ArchAblationTab />}
+      {active === 'INTERPRET'  && <InterpretTab />}
       {active === 'TABLES'     && <TablesTab />}
     </div>
   )
