@@ -17,6 +17,34 @@ in --output-dir, new missions are generated with sim_ids starting
 from the current max + 1, then merged into the existing file using
 streaming PyArrow writes (no RAM blowup). summary.parquet is
 regenerated afterwards.
+
+Time Step & Integration Accuracy
+----------------------------------
+All datasets (Earth-Moon, Earth-Mars, and any future planet pair) use
+--time-step 60 (record features every 60 seconds) with the RK4 integrator
+running internally at 10-second sub-steps (min(time_step, 10.0) in
+gmat_runner.py). This is fixed and consistent across all bodies:
+
+  - Increasing --time-step does NOT speed up generation — the RK4 sub-step
+    is capped at 10s regardless, so total physics work is identical.
+    Only the number of recorded rows changes.
+  - 10s time_step produces sequences too long for the Transformer
+    (25,920 Moon steps; model tuned for ~576).
+  - 10-minute time_step degrades Moon resolution too severely (~173 steps).
+  - 60s is the validated standard: Moon averages ~576 steps at 40% early-exit,
+    and the model architecture (max_seq_len=1000) was tuned for this.
+
+Mars generation command (10,000 missions, ~11 hrs on 20 cores, run overnight):
+  nohup python3 -m src.data_collection.build_database \\
+    --source earth --target mars --num-missions 10000 \\
+    --output-dir data/mars --seed 42 --success-ratio 0.35 \\
+    --batch-size 500 > logs/mars_gen.log 2>&1 &
+
+Moon baseline command (10,000 missions, ~30 min on 20 cores):
+  nohup python3 -m src.data_collection.build_database \\
+    --source earth --target moon --num-missions 10000 \\
+    --output-dir data/moon --seed 42 --success-ratio 0.35 \\
+    --batch-size 500 > logs/moon_gen.log 2>&1 &
 """
 
 from __future__ import annotations
