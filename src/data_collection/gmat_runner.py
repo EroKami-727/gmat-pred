@@ -84,6 +84,7 @@ class MissionConfig:
 
         self.source_mu = src["mu"]
         self.source_radius = src["radius"]
+        self.source_soi = src["soi"]
         self.target_mu = tgt["mu"]
         self.target_radius = tgt["radius"]
         self.target_soi = tgt["soi"]
@@ -335,10 +336,42 @@ def _rk4_step(state: np.ndarray, t: float, dt: float, cfg: MissionConfig) -> np.
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Adaptive Integration Step
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _adaptive_integration_dt(
+    r: np.ndarray, t: float, cfg: MissionConfig,
+    dt_min: float = 10.0, dt_max: float = 300.0,
+) -> float:
+    """
+    Return a fine RK4 sub-step near planets, coarse during cruise.
+
+    Thresholds:
+      - Within 15% of source SOI (departure zone): dt_min
+      - Within 20% of target SOI (arrival zone):   dt_min
+      - Cruise phase (everything else):             dt_max
+
+    This is equivalent to adaptive step-size control (Dormand-Prince style)
+    but with physics-motivated switching rather than error estimation.
+    Both dt_min and dt_max are bounded above by time_step in the caller
+    so subs >= 1 is always guaranteed.
+    """
+    r_from_source = np.linalg.norm(r)
+    target_pos = _target_ephemeris(t, cfg)
+    r_from_target = np.linalg.norm(r - target_pos)
+
+    if r_from_source < cfg.source_soi * 0.15:
+        return dt_min
+    if r_from_target < cfg.target_soi * 0.20:
+        return dt_min
+    return dt_max
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Synthetic Runner
 # ═══════════════════════════════════════════════════════════════════════════
 
-def run_synthetic(params: MissionParams, time_step: float = 60.0) -> pd.DataFrame:
+def run_synthetic(params: MissionParams, time_step: float = 1800.0) -> pd.DataFrame:
     """
     Run a single mission simulation using the 3-body RK4 propagator.
 
@@ -363,7 +396,6 @@ def run_synthetic(params: MissionParams, time_step: float = 60.0) -> pd.DataFram
     state = np.concatenate([r, v])
     total_secs = cfg.prop_days * 86400.0
     n_steps = int(total_secs / time_step)
-    integration_dt = min(time_step, 10.0)
 
     rows = []
     min_target_rmag = 999999999.0
@@ -427,12 +459,14 @@ def run_synthetic(params: MissionParams, time_step: float = 60.0) -> pd.DataFram
             -1, "", 0.0,
         ])
 
-        # Step forward
+        # Step forward with adaptive sub-step (fine near planets, coarse during cruise)
         if step_i < n_steps:
-            subs = int(time_step / integration_dt)
+            adt = _adaptive_integration_dt(r_current, t, cfg)
+            subs = max(1, round(time_step / min(adt, time_step)))
+            actual_dt = time_step / subs
             for _ in range(subs):
-                state = _rk4_step(state, t, integration_dt, cfg)
-                t += integration_dt
+                state = _rk4_step(state, t, actual_dt, cfg)
+                t += actual_dt
 
     if not rows:
         return _empty_failure(params, cfg)

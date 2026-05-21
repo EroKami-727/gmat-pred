@@ -105,7 +105,7 @@ def _build_summary(missions_path: Path, summary_path: Path) -> None:
 
 def build_database(
     num_missions: int = 200,
-    time_step: float = 60.0,
+    time_step: float = 1800.0,
     output_dir: str = "data",
     seed: int = 42,
     source: str = "earth",
@@ -113,6 +113,7 @@ def build_database(
     success_ratio: float = 0.0,
     batch_size: int = 500,
     append: bool = False,
+    workers: int = None,
 ) -> None:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -180,7 +181,7 @@ def build_database(
     params_df.to_parquet(params_path, index=False)
     print(f"  ✓ Saved parameters → {params_path}")
 
-    cores = cpu_count()
+    cores = workers if workers is not None else cpu_count()
     print(f"\n▸ Running {num_missions} simulations using {cores} cores (3-Body RK4)...")
     t0 = time.time()
 
@@ -285,7 +286,10 @@ if __name__ == "__main__":
         description="Build Monte Carlo trajectory database for any planet pair."
     )
     parser.add_argument("--num-missions",  type=int,   default=200)
-    parser.add_argument("--time-step",     type=float, default=60.0)
+    parser.add_argument("--time-step",     type=float, default=1800.0,
+                        help="Seconds between recorded data points (default 1800s = 30 min). "
+                             "Does not affect RK4 integration accuracy — adaptive sub-stepping "
+                             "always uses 10s near planets regardless of this value.")
     parser.add_argument("--output-dir",    type=str,   default="data")
     parser.add_argument("--seed",          type=int,   default=42)
     parser.add_argument("--source",        type=str,   default="earth", choices=available,
@@ -298,6 +302,9 @@ if __name__ == "__main__":
                         help="Save results to disk every N missions to save RAM")
     parser.add_argument("--append",        action="store_true",
                         help="Append new missions to an existing missions.parquet in --output-dir")
+    parser.add_argument("--workers",       type=int,   default=None,
+                        help="Number of parallel workers (default: all CPU cores). "
+                             "Reduce for interplanetary targets to limit peak RAM.")
     args = parser.parse_args()
 
     build_database(
@@ -310,4 +317,5 @@ if __name__ == "__main__":
         success_ratio=args.success_ratio,
         batch_size=args.batch_size,
         append=args.append,
+        workers=args.workers,
     )
