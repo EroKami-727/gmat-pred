@@ -168,6 +168,37 @@ Updated next experiment:
   planet experiments. The operational claim is mission-family screening, not
   necessarily transfer to a completely unseen planet.
 
+## Parameter-Corridor Holdout Result
+
+Completed for `TOI_V` and `AOP` quintile bands within each target.
+
+Mean summary-XGBoost performance:
+
+- `TOI_V` holdout: Accuracy 97.97%, F1 0.798, AUC 0.986
+- `AOP` holdout: Accuracy 90.10%, F1 0.684, AUC 0.978
+
+Mean initial-no-context performance:
+
+- `TOI_V` holdout: Accuracy 95.51%, F1 0.587, AUC 0.939
+- `AOP` holdout: Accuracy 88.68%, F1 0.503, AUC 0.864
+
+Interpretation:
+
+- This supports in-family parameter interpolation better than zero-shot
+  unseen-planet transfer.
+- Summary features generalize better than initial-only features, so temporal
+  trajectory information adds value for corridor holdout.
+- Edge bins with very low success rates have weak F1 despite high accuracy/AUC.
+- `AOP` bin 1 is a real failure case and must be disclosed.
+
+Current strongest paper framing:
+
+- OrbitGuard's synthetic mission-family screening is promising under
+  random-split and parameter-corridor holdout.
+- Full unseen-target generalization remains unsolved.
+- XGBoost trajectory summaries are the strongest current model; Transformer is
+  a neural sequential baseline, not the leading classifier.
+
 ## Critique Policy
 
 Do not optimize for making the numbers look good. Optimize for claims that can

@@ -169,7 +169,8 @@ def extract_initial_no_context_features(sequences: list[np.ndarray]) -> np.ndarr
 
 def _feature_names(mode: str) -> list[str]:
     if mode == "initial_no_context":
-        return [f"{name}_first" for name in FEATURE_COLS[:FEATURE_COLS.index("mu_ratio")]]
+        context_start = FEATURE_COLS.index("mu_ratio")
+        return [f"{name}_first" for name in FEATURE_COLS[:context_start]]
     if mode == "initial":
         return [f"{name}_first" for name in FEATURE_COLS]
     if mode == "endpoints":
