@@ -84,6 +84,7 @@ class MissionConfig:
 
         self.source_mu = src["mu"]
         self.source_radius = src["radius"]
+        self.source_soi = src["soi"]
         self.target_mu = tgt["mu"]
         self.target_radius = tgt["radius"]
         self.target_soi = tgt["soi"]
@@ -337,10 +338,41 @@ def _rk4_step(state: np.ndarray, t: float, dt: float, cfg: MissionConfig) -> np.
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Adaptive Integration Step
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _adaptive_integration_dt(
+    r: np.ndarray,
+    t: float,
+    cfg: MissionConfig,
+    time_step: float,
+) -> float:
+    """
+    Return a physics-motivated RK4 sub-step for the current state.
+
+    Moon propagation retains the validated 10-second cap. Interplanetary
+    propagation uses 30 seconds near either body, 300 seconds during target
+    approach, and 900 seconds during deep-space cruise.
+    """
+    if cfg.source_name == "earth" and cfg.target_name == "moon":
+        return min(time_step, 10.0)
+
+    r_from_source = np.linalg.norm(r)
+    target_pos = _target_ephemeris(t, cfg)
+    r_from_target = np.linalg.norm(r - target_pos)
+
+    if r_from_source < 100_000.0 or r_from_target < 250_000.0:
+        return min(time_step, 30.0)
+    if r_from_target < 5.0 * cfg.target_soi:
+        return min(time_step, 300.0)
+    return min(time_step, 900.0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Synthetic Runner
 # ═══════════════════════════════════════════════════════════════════════════
 
-def run_synthetic(params: MissionParams, time_step: float = 60.0) -> pd.DataFrame:
+def run_synthetic(params: MissionParams, time_step: float = 1800.0) -> pd.DataFrame:
     """
     Run a single mission simulation using the 3-body RK4 propagator.
 
@@ -365,18 +397,6 @@ def run_synthetic(params: MissionParams, time_step: float = 60.0) -> pd.DataFram
     state = np.concatenate([r, v])
     total_secs = cfg.prop_days * 86400.0
     n_steps = int(total_secs / time_step)
-
-    if cfg.source_name == "earth" and cfg.target_name == "moon":
-        far_integration_dt = min(time_step, 10.0)
-        near_integration_dt = far_integration_dt
-        fine_integration_dt = far_integration_dt
-    else:
-        # Interplanetary runs can use larger deep-space steps, but the
-        # departure/capture neighborhoods still need small steps. Using a
-        # coarse fixed 900s step near Earth can create false Mars encounters.
-        far_integration_dt = min(time_step, 900.0)
-        near_integration_dt = min(time_step, 300.0)
-        fine_integration_dt = min(time_step, 30.0)
 
     rows = []
     min_target_rmag = math.inf
@@ -448,20 +468,7 @@ def run_synthetic(params: MissionParams, time_step: float = 60.0) -> pd.DataFram
         if step_i < n_steps:
             segment_end = t + time_step
             while t < segment_end:
-                target_pos_step = _target_ephemeris(t, cfg)
-                source_rmag_step = np.linalg.norm(state[:3])
-                target_rmag_step = np.linalg.norm(state[:3] - target_pos_step)
-
-                if (
-                    source_rmag_step < 100_000.0
-                    or target_rmag_step < 250_000.0
-                ):
-                    dt = fine_integration_dt
-                elif target_rmag_step < 5.0 * cfg.target_soi:
-                    dt = near_integration_dt
-                else:
-                    dt = far_integration_dt
-
+                dt = _adaptive_integration_dt(state[:3], t, cfg, time_step)
                 dt = min(dt, segment_end - t)
                 if dt <= 0:
                     break

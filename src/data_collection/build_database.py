@@ -20,31 +20,14 @@ regenerated afterwards.
 
 Time Step & Integration Accuracy
 ----------------------------------
-All datasets (Earth-Moon, Earth-Mars, and any future planet pair) use
---time-step 60 (record features every 60 seconds) with the RK4 integrator
-running internally at 10-second sub-steps (min(time_step, 10.0) in
-gmat_runner.py). This is fixed and consistent across all bodies:
+``--time-step`` controls recorded telemetry cadence, not the RK4 sub-step.
+Moon propagation uses sub-steps up to 10 seconds. Interplanetary propagation
+uses 30-second sub-steps near either body, 300 seconds during target approach,
+and 900 seconds during deep-space cruise.
 
-  - Increasing --time-step does NOT speed up generation — the RK4 sub-step
-    is capped at 10s regardless, so total physics work is identical.
-    Only the number of recorded rows changes.
-  - 10s time_step produces sequences too long for the Transformer
-    (25,920 Moon steps; model tuned for ~576).
-  - 10-minute time_step degrades Moon resolution too severely (~173 steps).
-  - 60s is the validated standard: Moon averages ~576 steps at 40% early-exit,
-    and the model architecture (max_seq_len=1000) was tuned for this.
-
-Mars generation command (10,000 missions, ~11 hrs on 20 cores, run overnight):
-  nohup python3 -m src.data_collection.build_database \\
-    --source earth --target mars --num-missions 10000 \\
-    --output-dir data/mars --seed 42 --success-ratio 0.35 \\
-    --batch-size 500 > logs/mars_gen.log 2>&1 &
-
-Moon baseline command (10,000 missions, ~30 min on 20 cores):
-  nohup python3 -m src.data_collection.build_database \\
-    --source earth --target moon --num-missions 10000 \\
-    --output-dir data/moon --seed 42 --success-ratio 0.35 \\
-    --batch-size 500 > logs/moon_gen.log 2>&1 &
+The CLI default is 1800 seconds for exploratory runs. Production datasets must
+set their validated cadence explicitly. The current research corpus records
+Moon telemetry at 900 seconds and interplanetary telemetry at 54000 seconds.
 """
 
 from __future__ import annotations
@@ -110,7 +93,7 @@ def _build_summary(missions_path: Path, summary_path: Path) -> None:
 
 def build_database(
     num_missions: int = 200,
-    time_step: float = 60.0,
+    time_step: float = 1800.0,
     output_dir: str = "data",
     seed: int = 42,
     source: str = "earth",
@@ -119,7 +102,7 @@ def build_database(
     batch_size: int = 500,
     append: bool = False,
     allow_dense_interplanetary: bool = False,
-    cores: int | None = None,
+    workers: int | None = None,
 ) -> None:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -196,7 +179,7 @@ def build_database(
     params_df.to_parquet(params_path, index=False)
     print(f"  ✓ Saved parameters → {params_path}")
 
-    cores = cores or cpu_count()
+    cores = workers if workers is not None else cpu_count()
     cores = max(1, int(cores))
     print(f"\n▸ Running {num_missions} simulations using {cores} cores (3-Body RK4)...")
     t0 = time.time()
@@ -256,7 +239,7 @@ def build_database(
                 pbar = tqdm(pool.imap_unordered(run_func, missions), total=num_missions, desc="  Simulating", unit="mission")
                 consume_results(pbar)
         except PermissionError as exc:
-            print(f"  ⚠ Multiprocessing unavailable ({exc}). Falling back to --cores 1.")
+            print(f"  ⚠ Multiprocessing unavailable ({exc}). Falling back to one worker.")
             pbar = tqdm((run_func(m) for m in missions), total=num_missions, desc="  Simulating", unit="mission")
             consume_results(pbar)
 
@@ -330,7 +313,10 @@ if __name__ == "__main__":
         description="Build Monte Carlo trajectory database for any planet pair."
     )
     parser.add_argument("--num-missions",  type=int,   default=200)
-    parser.add_argument("--time-step",     type=float, default=60.0)
+    parser.add_argument("--time-step",     type=float, default=1800.0,
+                        help="Seconds between recorded data points (default 1800s = 30 min). "
+                             "Does not affect RK4 integration accuracy — adaptive sub-stepping "
+                             "uses finer steps near the source and target bodies.")
     parser.add_argument("--output-dir",    type=str,   default="data")
     parser.add_argument("--seed",          type=int,   default=42)
     parser.add_argument("--source",        type=str,   default="earth", choices=available,
@@ -341,12 +327,13 @@ if __name__ == "__main__":
                         help="Fraction of missions to bias toward success (0.0-1.0)")
     parser.add_argument("--batch-size",    type=int,   default=500,
                         help="Save results to disk every N missions to save RAM")
-    parser.add_argument("--cores",         type=int,   default=None,
-                        help="Worker processes. Use --cores 1 if Windows blocks multiprocessing.")
     parser.add_argument("--append",        action="store_true",
                         help="Append new missions to an existing missions.parquet in --output-dir")
     parser.add_argument("--allow-dense-interplanetary", action="store_true",
                         help="Allow <900s telemetry for non-Moon targets. Use only for small validation runs.")
+    parser.add_argument("--workers", "--cores", dest="workers", type=int, default=None,
+                        help="Number of parallel workers (default: all CPU cores). "
+                             "Reduce for interplanetary targets to limit peak RAM.")
     args = parser.parse_args()
 
     build_database(
@@ -360,5 +347,5 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         append=args.append,
         allow_dense_interplanetary=args.allow_dense_interplanetary,
-        cores=args.cores,
+        workers=args.workers,
     )
