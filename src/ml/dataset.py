@@ -340,7 +340,7 @@ def create_dataloaders(
 
     print(f"  ─── Dataset Summary ───")
     print(f"  Target mode      : {target_mode}")
-    print(f"  Downsample factor: {downsample_factor}x (60s → {downsample_factor}min)")
+    print(f"  Downsample factor: {downsample_factor}x")
     print(f"  Early-exit frac  : {early_exit_frac:.0%}")
     print(f"  Max seq length   : {resolved_max_len}")
     print(f"  Features ({train_ds.num_features})   : {train_ds.feature_names}")

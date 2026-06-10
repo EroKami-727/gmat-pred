@@ -96,7 +96,9 @@ def load_split_data(
     if current_rows and current_mid is not None:
         missions[current_mid] = _process_group(current_rows, early_exit_frac, downsample_factor)
 
-    all_ids = np.array(sorted(missions.keys()))
+    # Match create_dataloaders exactly: use Parquet mission_id unique order,
+    # then apply the same seeded shuffle. Sorting here changes the split.
+    all_ids = pf.read(columns=["mission_id"])["mission_id"].unique().to_numpy().copy()
     rng = np.random.default_rng(seed)
     rng.shuffle(all_ids)
     n = len(all_ids)
