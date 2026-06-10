@@ -94,16 +94,26 @@ class TrajectoryLSTM(nn.Module):
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_len: int = 2000):
         super().__init__()
+        pe = self._build_encoding(max_len, d_model)
+        self.register_buffer('pe', pe)
+
+    @staticmethod
+    def _build_encoding(max_len: int, d_model: int) -> torch.Tensor:
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)
+        return pe
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (batch, seq_len, d_model)
-        return x + self.pe[:x.size(1), :].unsqueeze(0)
+        if x.size(1) <= self.pe.size(0):
+            pe = self.pe[:x.size(1), :]
+        else:
+            # Preserve checkpoint buffer shape while supporting longer outer-planet sequences.
+            pe = self._build_encoding(x.size(1), x.size(2)).to(device=x.device)
+        return x + pe.to(dtype=x.dtype).unsqueeze(0)
 
 
 class TrajectoryTransformer(nn.Module):

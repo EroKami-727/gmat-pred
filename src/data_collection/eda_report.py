@@ -22,21 +22,34 @@ from __future__ import annotations
 
 import argparse
 import base64
+import os
 import sys
 import textwrap
 from collections import defaultdict
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+os.environ.setdefault("MPLCONFIGDIR", str(PROJECT_ROOT / ".matplotlib"))
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import matplotlib.gridspec as gridspec
 from matplotlib.patches import FancyBboxPatch
-import seaborn as sns
+try:
+    import seaborn as sns
+except ModuleNotFoundError:
+    sns = None
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Theme
@@ -89,11 +102,12 @@ plt.rcParams.update({
     "savefig.bbox":       "tight",
 })
 
-sns.set_style("darkgrid", {
-    "axes.facecolor":  C["card"],
-    "figure.facecolor": C["bg"],
-    "grid.color":      C["grid"],
-})
+if sns is not None:
+    sns.set_style("darkgrid", {
+        "axes.facecolor":  C["card"],
+        "figure.facecolor": C["bg"],
+        "grid.color":      C["grid"],
+    })
 
 
 def _glow_bar(ax, x, height, color, width=0.45, alpha=0.85, label=None):
@@ -419,15 +433,29 @@ def chart_05_correlation_matrix(params: pd.DataFrame, out: Path) -> Path:
     mask = np.triu(np.ones_like(corr, dtype=bool))
 
     fig, ax = plt.subplots(figsize=(9, 7.5))
-    cmap = sns.diverging_palette(240, 10, s=80, l=55, as_cmap=True)
-    sns.heatmap(corr, mask=mask, annot=True, fmt=".3f", cmap=cmap, center=0,
-                ax=ax, cbar_kws={"shrink": 0.75, "pad": 0.02},
-                linecolor=C["bg"], linewidths=1.5, square=True,
-                annot_kws={"size": 10, "weight": "bold"})
+    if sns is not None:
+        cmap = sns.diverging_palette(240, 10, s=80, l=55, as_cmap=True)
+        sns.heatmap(corr, mask=mask, annot=True, fmt=".3f", cmap=cmap, center=0,
+                    ax=ax, cbar_kws={"shrink": 0.75, "pad": 0.02},
+                    linecolor=C["bg"], linewidths=1.5, square=True,
+                    annot_kws={"size": 10, "weight": "bold"})
+    else:
+        masked = corr.mask(mask)
+        im = ax.imshow(masked, cmap="coolwarm", vmin=-1, vmax=1)
+        ax.set_xticks(np.arange(len(corr.columns)), labels=corr.columns, rotation=45, ha="right")
+        ax.set_yticks(np.arange(len(corr.index)), labels=corr.index)
+        for y in range(masked.shape[0]):
+            for x in range(masked.shape[1]):
+                value = masked.iloc[y, x]
+                if pd.notna(value):
+                    ax.text(x, y, f"{value:.3f}", ha="center", va="center",
+                            color=C["text"], fontsize=10, fontweight="bold")
+        fig.colorbar(im, ax=ax, shrink=0.75, pad=0.02)
 
     _title(ax, "05 · Pearson Correlation Matrix", fontsize=13)
-    cbar = ax.collections[0].colorbar
-    cbar.ax.tick_params(colors=C["muted"])
+    cbar = ax.collections[0].colorbar if ax.collections else None
+    if cbar is not None:
+        cbar.ax.tick_params(colors=C["muted"])
     return _save(fig, out / "05_correlation_matrix.png")
 
 

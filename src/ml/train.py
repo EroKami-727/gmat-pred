@@ -82,33 +82,42 @@ def validate(model, loader, criterion, device, task="binary"):
     total = 0
     all_preds = []
     all_labels = []
-    
-    with torch.no_grad():
-        for X, y, lengths in tqdm(loader, desc="  Validating", leave=False):
-            X, y = X.to(device), y.to(device)
-            
-            if isinstance(model, TrajectoryLSTM):
-                preds = model(X, lengths)
-            else:
-                mask = torch.zeros(X.shape[0], X.shape[1], dtype=torch.bool, device=device)
-                for i, l in enumerate(lengths):
-                    mask[i, int(l):] = True
-                preds = model(X, mask)
-                
-            loss = criterion(preds, y.float() if task in ["binary", "regression"] else y)
-            total_loss += loss.item()
-            
-            if task == "binary":
-                probs = torch.sigmoid(preds)
-                predicted = (probs > 0.5).long()
-                correct += (predicted == y).sum().item()
-                total += y.size(0)
-                all_preds.extend(probs.cpu().numpy().tolist())
-                all_labels.extend(y.cpu().numpy().tolist())
-            elif task == "multiclass":
-                _, predicted = torch.max(preds.data, 1)
-                correct += (predicted == y).sum().item()
-                total += y.size(0)
+
+    fastpath_enabled = torch.backends.mha.get_fastpath_enabled()
+    if isinstance(model, TrajectoryTransformer):
+        # Long padded outer-planet batches can make PyTorch's inference fastpath
+        # allocate several GiB more than the numerically equivalent standard path.
+        torch.backends.mha.set_fastpath_enabled(False)
+    try:
+        with torch.no_grad():
+            for X, y, lengths in tqdm(loader, desc="  Validating", leave=False):
+                X, y = X.to(device), y.to(device)
+
+                if isinstance(model, TrajectoryLSTM):
+                    preds = model(X, lengths)
+                else:
+                    mask = torch.zeros(X.shape[0], X.shape[1], dtype=torch.bool, device=device)
+                    for i, l in enumerate(lengths):
+                        mask[i, int(l):] = True
+                    preds = model(X, mask)
+
+                loss = criterion(preds, y.float() if task in ["binary", "regression"] else y)
+                total_loss += loss.item()
+
+                if task == "binary":
+                    probs = torch.sigmoid(preds)
+                    predicted = (probs > 0.5).long()
+                    correct += (predicted == y).sum().item()
+                    total += y.size(0)
+                    all_preds.extend(probs.cpu().numpy().tolist())
+                    all_labels.extend(y.cpu().numpy().tolist())
+                elif task == "multiclass":
+                    _, predicted = torch.max(preds.data, 1)
+                    correct += (predicted == y).sum().item()
+                    total += y.size(0)
+    finally:
+        if isinstance(model, TrajectoryTransformer):
+            torch.backends.mha.set_fastpath_enabled(fastpath_enabled)
                 
     avg_loss = total_loss / len(loader)
     acc = (correct / total) if total > 0 else 0
@@ -145,6 +154,7 @@ def main():
     parser.add_argument("--hidden-dim", type=int, default=128)
     parser.add_argument("--num-layers", type=int, default=2)
     parser.add_argument("--early-exit", type=float, default=1.0, help="Fraction of trajectory to use (0.1-1.0)")
+    parser.add_argument("--downsample-factor", type=int, default=15, help="Keep every Nth timestep during loading")
     parser.add_argument("--seed",       type=int,   default=42,  help="Random seed for data split and weight init")
     parser.add_argument("--output-dir", type=str, default="models")
     args = parser.parse_args()
@@ -164,6 +174,7 @@ def main():
     train_loader, val_loader, test_loader, scaler = create_dataloaders(
         args.data,
         target_mode=args.task,
+        downsample_factor=args.downsample_factor,
         early_exit_frac=args.early_exit,
         batch_size=args.batch_size,
         seed=args.seed,

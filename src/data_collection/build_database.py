@@ -61,6 +61,11 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm import tqdm
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 # Ensure project root is importable
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -113,6 +118,8 @@ def build_database(
     success_ratio: float = 0.0,
     batch_size: int = 500,
     append: bool = False,
+    allow_dense_interplanetary: bool = False,
+    cores: int | None = None,
 ) -> None:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -120,6 +127,13 @@ def build_database(
     missions_path = out_path / "missions.parquet"
     params_path   = out_path / "mission_params.parquet"
     summary_path  = out_path / "summary.parquet"
+
+    if target != "moon" and time_step < 900.0 and not allow_dense_interplanetary:
+        raise ValueError(
+            "Refusing dense interplanetary telemetry. Earth-Mars at 60s creates "
+            "~447k rows per mission. Use --time-step 900, 1800, or 3600, or pass "
+            "--allow-dense-interplanetary for a small validation-only run."
+        )
 
     # ── Determine starting sim_id for append mode ──────────────────────────
     id_offset = 0
@@ -141,10 +155,12 @@ def build_database(
         append = False
 
     # Temporary directory for batches
+    # Only needed for append mode, where we must stage new data before merging.
     tmp_path = out_path / "_tmp_batches"
     if tmp_path.exists():
         shutil.rmtree(tmp_path)
-    tmp_path.mkdir(parents=True)
+    if append:
+        tmp_path.mkdir(parents=True)
 
     print("=" * 60)
     print("  GMAT Monte Carlo Database Builder (Memory-Optimized)")
@@ -180,7 +196,8 @@ def build_database(
     params_df.to_parquet(params_path, index=False)
     print(f"  ✓ Saved parameters → {params_path}")
 
-    cores = cpu_count()
+    cores = cores or cpu_count()
+    cores = max(1, int(cores))
     print(f"\n▸ Running {num_missions} simulations using {cores} cores (3-Body RK4)...")
     t0 = time.time()
 
@@ -188,20 +205,29 @@ def build_database(
     batch_count = 0
     total_rows = 0
     successes = 0
+    writer = None
 
     run_func = partial(run_synthetic, time_step=time_step)
 
-    with Pool(processes=cores) as pool:
-        pbar = tqdm(pool.imap_unordered(run_func, missions), total=num_missions, desc="  Simulating", unit="mission")
-        for df in pbar:
+    def consume_results(results_iter):
+        nonlocal current_batch, batch_count, total_rows, successes, writer
+        for df in results_iter:
             current_batch.append(df)
             successes += int(df["label"].iloc[0] == 1)
 
             if len(current_batch) >= batch_size:
                 batch_df = pd.concat(current_batch, ignore_index=True)
                 total_rows += len(batch_df)
-                batch_file = tmp_path / f"batch_{batch_count:04d}.parquet"
-                batch_df.to_parquet(batch_file, index=False)
+
+                if append:
+                    batch_file = tmp_path / f"batch_{batch_count:04d}.parquet"
+                    batch_df.to_parquet(batch_file, index=False)
+                else:
+                    table = pa.Table.from_pandas(batch_df, preserve_index=False)
+                    if writer is None:
+                        writer = pq.ParquetWriter(missions_path, table.schema, compression="snappy")
+                    writer.write_table(table)
+
                 current_batch = []
                 batch_count += 1
                 pbar.set_postfix({"batch": batch_count, "saved_rows": f"{total_rows/1e6:.1f}M"})
@@ -209,12 +235,36 @@ def build_database(
         if current_batch:
             batch_df = pd.concat(current_batch, ignore_index=True)
             total_rows += len(batch_df)
-            batch_file = tmp_path / f"batch_{batch_count:04d}.parquet"
-            batch_df.to_parquet(batch_file, index=False)
+
+            if append:
+                batch_file = tmp_path / f"batch_{batch_count:04d}.parquet"
+                batch_df.to_parquet(batch_file, index=False)
+            else:
+                table = pa.Table.from_pandas(batch_df, preserve_index=False)
+                if writer is None:
+                    writer = pq.ParquetWriter(missions_path, table.schema, compression="snappy")
+                writer.write_table(table)
+
             batch_count += 1
 
+    if cores == 1:
+        pbar = tqdm((run_func(m) for m in missions), total=num_missions, desc="  Simulating", unit="mission")
+        consume_results(pbar)
+    else:
+        try:
+            with Pool(processes=cores) as pool:
+                pbar = tqdm(pool.imap_unordered(run_func, missions), total=num_missions, desc="  Simulating", unit="mission")
+                consume_results(pbar)
+        except PermissionError as exc:
+            print(f"  ⚠ Multiprocessing unavailable ({exc}). Falling back to --cores 1.")
+            pbar = tqdm((run_func(m) for m in missions), total=num_missions, desc="  Simulating", unit="mission")
+            consume_results(pbar)
+
+    if writer is not None:
+        writer.close()
+
     elapsed = time.time() - t0
-    all_batch_files = sorted(list(tmp_path.glob("*.parquet")))
+    all_batch_files = sorted(list(tmp_path.glob("*.parquet"))) if append else []
 
     # ── NEW: Consolidate (merge with existing if appending) ────────────────
     if append and missions_path.exists():
@@ -245,15 +295,10 @@ def build_database(
         print(f"  ✓ Merged → {missions_path}")
 
     else:
-        print(f"\n▸ Simulations complete. Consolidating {batch_count} batches...")
-        first_table = pq.read_table(all_batch_files[0])
-        schema = first_table.schema
+        print(f"\n▸ Simulations complete. Data streamed directly to missions.parquet in {batch_count} batches.")
 
-        with pq.ParquetWriter(missions_path, schema, compression="snappy") as writer:
-            for bfile in tqdm(all_batch_files, desc="  Consolidating", unit="batch"):
-                writer.write_table(pq.read_table(bfile))
-
-    shutil.rmtree(tmp_path)
+    if append and tmp_path.exists():
+        shutil.rmtree(tmp_path)
 
     print(f"▸ Generating summary index...")
     _build_summary(missions_path, summary_path)
@@ -296,8 +341,12 @@ if __name__ == "__main__":
                         help="Fraction of missions to bias toward success (0.0-1.0)")
     parser.add_argument("--batch-size",    type=int,   default=500,
                         help="Save results to disk every N missions to save RAM")
+    parser.add_argument("--cores",         type=int,   default=None,
+                        help="Worker processes. Use --cores 1 if Windows blocks multiprocessing.")
     parser.add_argument("--append",        action="store_true",
                         help="Append new missions to an existing missions.parquet in --output-dir")
+    parser.add_argument("--allow-dense-interplanetary", action="store_true",
+                        help="Allow <900s telemetry for non-Moon targets. Use only for small validation runs.")
     args = parser.parse_args()
 
     build_database(
@@ -310,4 +359,6 @@ if __name__ == "__main__":
         success_ratio=args.success_ratio,
         batch_size=args.batch_size,
         append=args.append,
+        allow_dense_interplanetary=args.allow_dense_interplanetary,
+        cores=args.cores,
     )

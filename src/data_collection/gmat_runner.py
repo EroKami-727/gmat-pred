@@ -114,8 +114,10 @@ class MissionConfig:
             r2 = tgt["orbit_radius"]
             a_t = (r1 + r2) / 2.0
             t_hohmann_s = math.pi * math.sqrt(a_t**3 / SUN_MU)
-            # Add 20% margin, convert to days
-            self.prop_days = min(t_hohmann_s * 1.2 / 86400.0, 3650.0)  # cap at 10 years
+            # Add 20% margin, convert to days.  Outer planets need the full
+            # transfer window; a 10-year cap prevents Neptune from reaching
+            # closest approach in this simplified model.
+            self.prop_days = t_hohmann_s * 1.2 / 86400.0
 
         # Capture/impact radius (stop sim if we get this close)
         self.capture_radius = min(500.0, self.target_radius * 0.3)
@@ -363,16 +365,31 @@ def run_synthetic(params: MissionParams, time_step: float = 60.0) -> pd.DataFram
     state = np.concatenate([r, v])
     total_secs = cfg.prop_days * 86400.0
     n_steps = int(total_secs / time_step)
-    integration_dt = min(time_step, 10.0)
+
+    if cfg.source_name == "earth" and cfg.target_name == "moon":
+        far_integration_dt = min(time_step, 10.0)
+        near_integration_dt = far_integration_dt
+        fine_integration_dt = far_integration_dt
+    else:
+        # Interplanetary runs can use larger deep-space steps, but the
+        # departure/capture neighborhoods still need small steps. Using a
+        # coarse fixed 900s step near Earth can create false Mars encounters.
+        far_integration_dt = min(time_step, 900.0)
+        near_integration_dt = min(time_step, 300.0)
+        fine_integration_dt = min(time_step, 30.0)
 
     rows = []
-    min_target_rmag = 999999999.0
+    min_target_rmag = math.inf
     crashed_source = False
+    terminated = False
     closest_state = None
     closest_target_pos = None
     closest_t = 0.0
 
     for step_i in range(n_steps + 1):
+        if terminated:
+            break
+
         t = step_i * time_step
         r_current, v_current = state[:3], state[3:]
 
@@ -427,15 +444,58 @@ def run_synthetic(params: MissionParams, time_step: float = 60.0) -> pd.DataFram
             -1, "", 0.0,
         ])
 
-        # Step forward
+        # Step forward with adaptive sub-stepping.
         if step_i < n_steps:
-            subs = int(time_step / integration_dt)
-            for _ in range(subs):
-                state = _rk4_step(state, t, integration_dt, cfg)
-                t += integration_dt
+            segment_end = t + time_step
+            while t < segment_end:
+                target_pos_step = _target_ephemeris(t, cfg)
+                source_rmag_step = np.linalg.norm(state[:3])
+                target_rmag_step = np.linalg.norm(state[:3] - target_pos_step)
+
+                if (
+                    source_rmag_step < 100_000.0
+                    or target_rmag_step < 250_000.0
+                ):
+                    dt = fine_integration_dt
+                elif target_rmag_step < 5.0 * cfg.target_soi:
+                    dt = near_integration_dt
+                else:
+                    dt = far_integration_dt
+
+                dt = min(dt, segment_end - t)
+                if dt <= 0:
+                    break
+                state = _rk4_step(state, t, dt, cfg)
+                t += dt
+
+                r_step, v_step = state[:3], state[3:]
+                source_rmag_step = np.linalg.norm(r_step)
+                if source_rmag_step < cfg.source_radius:
+                    crashed_source = True
+                    terminated = True
+                    break
+
+                target_pos_after = _target_ephemeris(t, cfg)
+                target_rmag_after = np.linalg.norm(r_step - target_pos_after)
+                if target_rmag_after < min_target_rmag:
+                    min_target_rmag = target_rmag_after
+                    closest_state = (r_step.copy(), v_step.copy())
+                    closest_target_pos = target_pos_after.copy()
+                    closest_t = t
+
+                if target_rmag_after < cfg.capture_radius:
+                    terminated = True
+                    break
 
     if not rows:
         return _empty_failure(params, cfg)
+
+    if closest_state is None or closest_target_pos is None or not math.isfinite(min_target_rmag):
+        df = pd.DataFrame(rows, columns=COLUMNS)
+        df["label"] = 0
+        df["failure_type"] = "degenerate_orbit"
+        df["min_target_rmag"] = min_target_rmag if math.isfinite(min_target_rmag) else cfg.miss_distance * 2
+        return df
 
     # 4. Determine final outcome using closest approach to target
     r_close, v_close = closest_state
