@@ -199,6 +199,26 @@ Current strongest paper framing:
 - XGBoost trajectory summaries are the strongest current model; Transformer is
   a neural sequential baseline, not the leading classifier.
 
+## Reviewer Risk Register
+
+See `docs/REVIEWER_RISK_REGISTER.md`.
+
+See `docs/STATISTICAL_AUDIT_SUMMARY.md` for paper-ready tables generated from
+the random-split, leave-one-target-out, and parameter-corridor JSON artifacts.
+
+Highest-risk claims to avoid:
+
+- Transformer superiority.
+- Unseen-planet robustness.
+- Flight-readiness or operational cancellation readiness.
+- 15-minute interplanetary cadence.
+
+Highest-value current claim:
+
+- Within calibrated synthetic mission families, trajectory-summary features
+  provide strong early ranking performance under unseen launch-parameter
+  corridor holdout, while full unseen-target transfer remains mixed.
+
 ## Critique Policy
 
 Do not optimize for making the numbers look good. Optimize for claims that can
