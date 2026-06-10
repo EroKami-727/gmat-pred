@@ -11,9 +11,9 @@ Key Design Decisions
    Flight Path Angle, Normalized Target Distance, Radial Velocity, and
    Velocity Magnitude.
 
-2. **Temporal Downsampling**: The raw 60-second timestep produces ~8640
-   steps per mission. We downsample to a configurable interval (default
-   15 minutes → ~576 steps) to keep sequences within LSTM memory limits.
+2. **Temporal Downsampling**: Keep every N-th telemetry record. The physical
+   interval depends on the source dataset cadence; the loader does not assume
+   that records are one minute apart.
 
 3. **Early-Exit Slicing**: For ablation studies, the dataset can serve
    only the first N% of each trajectory, forcing the model to predict
@@ -61,6 +61,16 @@ FEATURE_COLS = [
     "dist_ratio",                      # transfer distance / 1 AU
 ]
 
+FORBIDDEN_FEATURE_COLS = {
+    "label",
+    "failure_type",
+    "min_target_rmag",
+    "mission_id",
+    "source_body",
+    "target_body",
+}
+assert FORBIDDEN_FEATURE_COLS.isdisjoint(FEATURE_COLS)
+
 # Failure type encoding for multi-class mode
 FAILURE_TYPE_MAP = {
     "success":          0,
@@ -92,7 +102,7 @@ class TrajectoryDataset(Dataset):
     target_mode : str
         'binary', 'multiclass', or 'regression'.
     downsample_factor : int
-        Keep every N-th row (e.g., 15 for 60s→15min).
+        Keep every N-th telemetry row.
     max_seq_len : int or None
         Pad/truncate all sequences to this length. If None, use the
         longest sequence in the dataset.
