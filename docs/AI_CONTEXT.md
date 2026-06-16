@@ -4,15 +4,21 @@ Read this first before touching any code.
 
 ## What it does
 
-Predicts failing spacecraft trajectories early using a Transformer on physics-invariant telemetry. Goal: cancel doomed Monte Carlo simulations before they complete (early-exit). The model streams in telemetry timestep-by-timestep and outputs P(fail) in realtime.
+Predicts spacecraft trajectory outcomes early from physics-invariant telemetry.
+The repository now includes a calibrated synthetic pipeline from the Moon
+through Neptune, sequential neural models, and non-neural baselines.
+
+Current paper framing must be evidence-led: XGBoost on trajectory features
+outperforms the Transformer on the current random mission split. Do not claim
+that the Transformer is the strongest classifier.
 
 ## Stack
 
-- **ML:** PyTorch `TrajectoryTransformer` (primary). `TrajectoryLSTM` is the architecture baseline in arch_ablation.
+- **ML:** PyTorch `TrajectoryTransformer`, `TrajectoryLSTM`, and XGBoost baselines.
 - **Backend:** FastAPI at `src/api/main.py` — `uvicorn src.api.main:app --port 8000` from project root
 - **Frontend:** React 18 + Vite (no TypeScript), Recharts, Tailwind v4 (unreliable — use inline styles)
-- **Data:** 10K missions, 85.3M rows, 13.44 GB Parquet at `data/merged/missions.parquet`
-- **Venv:** `/home/haise/Coding/venvs/gmat-pred/`
+- **Final local data:** 80K missions at `data/merged_through_neptune_15min/`
+- **Important:** generated data, reports, logs, and checkpoints are ignored by Git.
 
 ## Model — TrajectoryTransformer (src/ml/model.py)
 
@@ -37,26 +43,45 @@ soi_ratio              target SOI / transfer dist
 dist_ratio             transfer dist / 1 AU
 ```
 
-## Dataset
+## Current final dataset
 
-- label=1 → success (35.3%), label=0 → failure (64.7%)
-- Downsampled 15x: 60s → 15min steps, ~576 steps/mission full trajectory
-- `early_exit_frac` slices first N% of each trajectory at training time
-- `create_dataloaders()` splits by mission_id, RobustScaler fitted on train only
-- **Bug fixed:** `.to_numpy().copy()` required — PyArrow returns read-only arrays in numpy 2.x
+- 80,000 missions: 25,590 success / 54,410 failure.
+- Final success rate: 0.320.
+- Moon telemetry cadence: 900 seconds.
+- Interplanetary telemetry cadence: 54,000 seconds = 15 hours.
+- Folder names containing `15min` are historical names; do not interpret them as cadence.
+- Final model configuration: early exit 40%, downsample factor 10, seed 42.
+- For interplanetary missions, downsample factor 10 means every tenth 15-hour
+  record, not ten minutes.
+- `create_dataloaders()` splits by mission ID and fits `RobustScaler` on train only.
+- Baselines now use the exact same mission ordering and seeded split.
 
-## Ablation results (transformer, 30 epochs)
+## Current verified results
 
-| Exit % | AUC   | F1    | Acc    |
-|--------|-------|-------|--------|
-| 10%    | 0.889 | 0.778 | 83.93% |
-| 20%    | 0.964 | 0.854 | 90.67% |
-| 30%    | 0.982 | 0.893 | 92.80% |
-| 40%    | 0.997 | 0.948 | 96.53% |
-| 60%    | 0.998 | 0.971 | 98.00% |
-| 100%   | 1.000 | 0.989 | 99.27% |
+| Model | Accuracy | F1 | ROC-AUC |
+|---|---:|---:|---:|
+| Majority class | 67.35% | 0.0000 | 0.5000 |
+| Energy threshold | 35.81% | 0.4964 | 0.5233 |
+| Transformer, 40% trajectory | 79.73% | 0.7447 | 0.9363 |
+| XGBoost, full summaries | 99.34% | 0.9899 | 0.9998 |
+| XGBoost, first/last only | 99.33% | 0.9898 | 0.9998 |
+| XGBoost, first row only | 98.42% | 0.9760 | 0.9987 |
+| XGBoost, first row without context features | 98.42% | 0.9760 | 0.9987 |
 
-Production model trained at `--early-exit 0.4`. In simulator, `min_elapsed_pct=0.4` gates cancellation.
+Transformer training was interrupted after epoch 27 of 30 by laptop shutdown.
+The best validation-loss checkpoint from epoch 23 survived and was evaluated
+on the deterministic untouched test split.
+
+The initial-only XGBoost result shows that current synthetic mission outcomes
+are highly separable from initial conditions. This is not explicit target
+column leakage, but it makes random mission splits optimistic. The next
+paper-grade experiment should use grouped planet-held-out and/or
+parameter-corridor-held-out evaluation.
+
+Removing `mu_ratio`, `soi_ratio`, and `dist_ratio` from the initial-only
+baseline does not reduce accuracy. Target-regime context is therefore not the
+main cause of the near-perfect result; the initial dynamical state and
+calibrated targeting corridors are.
 
 ## File map
 
@@ -70,6 +95,7 @@ src/
     ablation.py      early-exit fraction sweep [0.1,0.2,0.3,0.4,0.6,1.0]
     evaluate.py      inference + metrics report on any parquet
     baselines.py     MajorityClass, EnergyThreshold, XGBoost baselines
+                       → full-summary, endpoint-only, and initial-only diagnostics
     multi_seed.py    5-seed robustness experiment → reports/multi_seed/
     arch_ablation.py component ablation (CLS, pos enc, context feats, LSTM)
     results_table.py reads all report JSONs → Markdown + LaTeX tables
@@ -78,6 +104,9 @@ src/
   data_collection/
     build_database.py   GMAT sim runner
     merge_datasets.py   merge parquet runs
+    mars_targeter.py    diagnostic targeting with production dynamics
+    exact_targeter.py   checkpointed exact calibration grids
+    adaptive_targeter.py adaptive outer-planet corridor refinement
 
 frontend/src/
   App.jsx                tab router: OVERVIEW/SIMULATOR/TRAINING/ABLATION/DATASET
@@ -136,3 +165,11 @@ GET  /api/simulator/stream          SSE realtime P(fail) per timestep for one mi
 - **PyArrow** — `.to_numpy()` is read-only in numpy 2.x, always `.copy()`
 - **Scaler** — fitted on train split only, saved alongside checkpoint, required at inference
 - **Run server from project root** — `src.api.main` import path requires it
+- **No explicit leakage features** — models use only the 13 features above;
+  label, failure_type, min_target_rmag, mission_id, source_body, and target_body
+  are not input features.
+- **Context-feature caveat** — mu_ratio, soi_ratio, and dist_ratio identify
+  mission regimes indirectly. Report this and test grouped generalization.
+- **Initial-condition separability** — first-row XGBoost reaches 98.42%
+  accuracy; random mission splits do not establish transfer to unseen planets
+  or unseen targeting corridors.

@@ -20,31 +20,14 @@ regenerated afterwards.
 
 Time Step & Integration Accuracy
 ----------------------------------
-All datasets (Earth-Moon, Earth-Mars, and any future planet pair) use
---time-step 60 (record features every 60 seconds) with the RK4 integrator
-running internally at 10-second sub-steps (min(time_step, 10.0) in
-gmat_runner.py). This is fixed and consistent across all bodies:
+``--time-step`` controls recorded telemetry cadence, not the RK4 sub-step.
+Moon propagation uses sub-steps up to 10 seconds. Interplanetary propagation
+uses 30-second sub-steps near either body, 300 seconds during target approach,
+and 900 seconds during deep-space cruise.
 
-  - Increasing --time-step does NOT speed up generation — the RK4 sub-step
-    is capped at 10s regardless, so total physics work is identical.
-    Only the number of recorded rows changes.
-  - 10s time_step produces sequences too long for the Transformer
-    (25,920 Moon steps; model tuned for ~576).
-  - 10-minute time_step degrades Moon resolution too severely (~173 steps).
-  - 60s is the validated standard: Moon averages ~576 steps at 40% early-exit,
-    and the model architecture (max_seq_len=1000) was tuned for this.
-
-Mars generation command (10,000 missions, ~11 hrs on 20 cores, run overnight):
-  nohup python3 -m src.data_collection.build_database \\
-    --source earth --target mars --num-missions 10000 \\
-    --output-dir data/mars --seed 42 --success-ratio 0.35 \\
-    --batch-size 500 > logs/mars_gen.log 2>&1 &
-
-Moon baseline command (10,000 missions, ~30 min on 20 cores):
-  nohup python3 -m src.data_collection.build_database \\
-    --source earth --target moon --num-missions 10000 \\
-    --output-dir data/moon --seed 42 --success-ratio 0.35 \\
-    --batch-size 500 > logs/moon_gen.log 2>&1 &
+The CLI default is 1800 seconds for exploratory runs. Production datasets must
+set their validated cadence explicitly. The current research corpus records
+Moon telemetry at 900 seconds and interplanetary telemetry at 54000 seconds.
 """
 
 from __future__ import annotations
@@ -60,6 +43,11 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm import tqdm
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 # Ensure project root is importable
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -113,7 +101,8 @@ def build_database(
     success_ratio: float = 0.0,
     batch_size: int = 500,
     append: bool = False,
-    workers: int = None,
+    allow_dense_interplanetary: bool = False,
+    workers: int | None = None,
 ) -> None:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -121,6 +110,13 @@ def build_database(
     missions_path = out_path / "missions.parquet"
     params_path   = out_path / "mission_params.parquet"
     summary_path  = out_path / "summary.parquet"
+
+    if target != "moon" and time_step < 900.0 and not allow_dense_interplanetary:
+        raise ValueError(
+            "Refusing dense interplanetary telemetry. Earth-Mars at 60s creates "
+            "~447k rows per mission. Use --time-step 900, 1800, or 3600, or pass "
+            "--allow-dense-interplanetary for a small validation-only run."
+        )
 
     # ── Determine starting sim_id for append mode ──────────────────────────
     id_offset = 0
@@ -142,10 +138,12 @@ def build_database(
         append = False
 
     # Temporary directory for batches
+    # Only needed for append mode, where we must stage new data before merging.
     tmp_path = out_path / "_tmp_batches"
     if tmp_path.exists():
         shutil.rmtree(tmp_path)
-    tmp_path.mkdir(parents=True)
+    if append:
+        tmp_path.mkdir(parents=True)
 
     print("=" * 60)
     print("  GMAT Monte Carlo Database Builder (Memory-Optimized)")
@@ -182,6 +180,7 @@ def build_database(
     print(f"  ✓ Saved parameters → {params_path}")
 
     cores = workers if workers is not None else cpu_count()
+    cores = max(1, int(cores))
     print(f"\n▸ Running {num_missions} simulations using {cores} cores (3-Body RK4)...")
     t0 = time.time()
 
@@ -189,20 +188,29 @@ def build_database(
     batch_count = 0
     total_rows = 0
     successes = 0
+    writer = None
 
     run_func = partial(run_synthetic, time_step=time_step)
 
-    with Pool(processes=cores) as pool:
-        pbar = tqdm(pool.imap_unordered(run_func, missions), total=num_missions, desc="  Simulating", unit="mission")
-        for df in pbar:
+    def consume_results(results_iter):
+        nonlocal current_batch, batch_count, total_rows, successes, writer
+        for df in results_iter:
             current_batch.append(df)
             successes += int(df["label"].iloc[0] == 1)
 
             if len(current_batch) >= batch_size:
                 batch_df = pd.concat(current_batch, ignore_index=True)
                 total_rows += len(batch_df)
-                batch_file = tmp_path / f"batch_{batch_count:04d}.parquet"
-                batch_df.to_parquet(batch_file, index=False)
+
+                if append:
+                    batch_file = tmp_path / f"batch_{batch_count:04d}.parquet"
+                    batch_df.to_parquet(batch_file, index=False)
+                else:
+                    table = pa.Table.from_pandas(batch_df, preserve_index=False)
+                    if writer is None:
+                        writer = pq.ParquetWriter(missions_path, table.schema, compression="snappy")
+                    writer.write_table(table)
+
                 current_batch = []
                 batch_count += 1
                 pbar.set_postfix({"batch": batch_count, "saved_rows": f"{total_rows/1e6:.1f}M"})
@@ -210,12 +218,36 @@ def build_database(
         if current_batch:
             batch_df = pd.concat(current_batch, ignore_index=True)
             total_rows += len(batch_df)
-            batch_file = tmp_path / f"batch_{batch_count:04d}.parquet"
-            batch_df.to_parquet(batch_file, index=False)
+
+            if append:
+                batch_file = tmp_path / f"batch_{batch_count:04d}.parquet"
+                batch_df.to_parquet(batch_file, index=False)
+            else:
+                table = pa.Table.from_pandas(batch_df, preserve_index=False)
+                if writer is None:
+                    writer = pq.ParquetWriter(missions_path, table.schema, compression="snappy")
+                writer.write_table(table)
+
             batch_count += 1
 
+    if cores == 1:
+        pbar = tqdm((run_func(m) for m in missions), total=num_missions, desc="  Simulating", unit="mission")
+        consume_results(pbar)
+    else:
+        try:
+            with Pool(processes=cores) as pool:
+                pbar = tqdm(pool.imap_unordered(run_func, missions), total=num_missions, desc="  Simulating", unit="mission")
+                consume_results(pbar)
+        except PermissionError as exc:
+            print(f"  ⚠ Multiprocessing unavailable ({exc}). Falling back to one worker.")
+            pbar = tqdm((run_func(m) for m in missions), total=num_missions, desc="  Simulating", unit="mission")
+            consume_results(pbar)
+
+    if writer is not None:
+        writer.close()
+
     elapsed = time.time() - t0
-    all_batch_files = sorted(list(tmp_path.glob("*.parquet")))
+    all_batch_files = sorted(list(tmp_path.glob("*.parquet"))) if append else []
 
     # ── NEW: Consolidate (merge with existing if appending) ────────────────
     if append and missions_path.exists():
@@ -246,15 +278,10 @@ def build_database(
         print(f"  ✓ Merged → {missions_path}")
 
     else:
-        print(f"\n▸ Simulations complete. Consolidating {batch_count} batches...")
-        first_table = pq.read_table(all_batch_files[0])
-        schema = first_table.schema
+        print(f"\n▸ Simulations complete. Data streamed directly to missions.parquet in {batch_count} batches.")
 
-        with pq.ParquetWriter(missions_path, schema, compression="snappy") as writer:
-            for bfile in tqdm(all_batch_files, desc="  Consolidating", unit="batch"):
-                writer.write_table(pq.read_table(bfile))
-
-    shutil.rmtree(tmp_path)
+    if append and tmp_path.exists():
+        shutil.rmtree(tmp_path)
 
     print(f"▸ Generating summary index...")
     _build_summary(missions_path, summary_path)
@@ -289,7 +316,7 @@ if __name__ == "__main__":
     parser.add_argument("--time-step",     type=float, default=1800.0,
                         help="Seconds between recorded data points (default 1800s = 30 min). "
                              "Does not affect RK4 integration accuracy — adaptive sub-stepping "
-                             "always uses 10s near planets regardless of this value.")
+                             "uses finer steps near the source and target bodies.")
     parser.add_argument("--output-dir",    type=str,   default="data")
     parser.add_argument("--seed",          type=int,   default=42)
     parser.add_argument("--source",        type=str,   default="earth", choices=available,
@@ -302,7 +329,9 @@ if __name__ == "__main__":
                         help="Save results to disk every N missions to save RAM")
     parser.add_argument("--append",        action="store_true",
                         help="Append new missions to an existing missions.parquet in --output-dir")
-    parser.add_argument("--workers",       type=int,   default=None,
+    parser.add_argument("--allow-dense-interplanetary", action="store_true",
+                        help="Allow <900s telemetry for non-Moon targets. Use only for small validation runs.")
+    parser.add_argument("--workers", "--cores", dest="workers", type=int, default=None,
                         help="Number of parallel workers (default: all CPU cores). "
                              "Reduce for interplanetary targets to limit peak RAM.")
     args = parser.parse_args()
@@ -317,5 +346,6 @@ if __name__ == "__main__":
         success_ratio=args.success_ratio,
         batch_size=args.batch_size,
         append=args.append,
+        allow_dense_interplanetary=args.allow_dense_interplanetary,
         workers=args.workers,
     )

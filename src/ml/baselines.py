@@ -96,7 +96,9 @@ def load_split_data(
     if current_rows and current_mid is not None:
         missions[current_mid] = _process_group(current_rows, early_exit_frac, downsample_factor)
 
-    all_ids = np.array(sorted(missions.keys()))
+    # Match create_dataloaders exactly: use Parquet mission_id unique order,
+    # then apply the same seeded shuffle. Sorting here changes the split.
+    all_ids = pf.read(columns=["mission_id"])["mission_id"].unique().to_numpy().copy()
     rng = np.random.default_rng(seed)
     rng.shuffle(all_ids)
     n = len(all_ids)
@@ -135,6 +137,49 @@ def extract_summary_features(sequences: list[np.ndarray]) -> np.ndarray:
         row.append(float(seq.shape[0]))
         rows.append(row)
     return np.array(rows, dtype=np.float32)
+
+
+def extract_endpoint_features(sequences: list[np.ndarray]) -> np.ndarray:
+    """
+    Convert trajectories into first/last values only.
+
+    This deliberately excludes mean/std/min/max and sequence length so the
+    restricted baseline cannot exploit aggregate trajectory-shape statistics.
+    Total: 13 features x 2 endpoints = 26 features per mission.
+    """
+    return np.array(
+        [
+            np.concatenate([seq[0], seq[-1]])
+            for seq in sequences
+        ],
+        dtype=np.float32,
+    )
+
+
+def extract_initial_features(sequences: list[np.ndarray]) -> np.ndarray:
+    """Use only the first observed telemetry row for each mission."""
+    return np.array([seq[0] for seq in sequences], dtype=np.float32)
+
+
+def extract_initial_no_context_features(sequences: list[np.ndarray]) -> np.ndarray:
+    """Use the first row without mu_ratio, soi_ratio, or dist_ratio."""
+    context_start = FEATURE_COLS.index("mu_ratio")
+    return np.array([seq[0, :context_start] for seq in sequences], dtype=np.float32)
+
+
+def _feature_names(mode: str) -> list[str]:
+    if mode == "initial_no_context":
+        context_start = FEATURE_COLS.index("mu_ratio")
+        return [f"{name}_first" for name in FEATURE_COLS[:context_start]]
+    if mode == "initial":
+        return [f"{name}_first" for name in FEATURE_COLS]
+    if mode == "endpoints":
+        return (
+            [f"{name}_first" for name in FEATURE_COLS]
+            + [f"{name}_last" for name in FEATURE_COLS]
+        )
+    stats = ["mean", "std", "min", "max", "first", "last"]
+    return [f"{name}_{stat}" for name in FEATURE_COLS for stat in stats] + ["length"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -201,6 +246,7 @@ def xgboost_baseline(
     X_test: list[np.ndarray],
     y_test: np.ndarray,
     seed: int = 42,
+    feature_mode: str = "summary",
 ) -> dict:
     """
     XGBoost trained on trajectory summary statistics (79 tabular features).
@@ -213,8 +259,15 @@ def xgboost_baseline(
     except ImportError:
         return {"error": "xgboost not installed — pip install xgboost"}
 
-    X_train_tab = extract_summary_features(X_train)
-    X_test_tab  = extract_summary_features(X_test)
+    extractors = {
+        "summary": extract_summary_features,
+        "endpoints": extract_endpoint_features,
+        "initial": extract_initial_features,
+        "initial_no_context": extract_initial_no_context_features,
+    }
+    extractor = extractors[feature_mode]
+    X_train_tab = extractor(X_train)
+    X_test_tab  = extractor(X_test)
 
     scaler = RobustScaler()
     X_train_tab = scaler.fit_transform(X_train_tab)
@@ -238,7 +291,15 @@ def xgboost_baseline(
 
     y_prob = clf.predict_proba(X_test_tab)[:, 1]
     y_pred = (y_prob > 0.5).astype(int)
-    return _metrics(y_test, y_pred, y_prob)
+    result = _metrics(y_test, y_pred, y_prob)
+    names = _feature_names(feature_mode)
+    top_indices = np.argsort(clf.feature_importances_)[-15:][::-1]
+    result["feature_mode"] = feature_mode
+    result["top_features"] = [
+        {"feature": names[i], "importance": float(clf.feature_importances_[i])}
+        for i in top_indices
+    ]
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -282,9 +343,36 @@ def main():
         print("  Running XGBoost...")
         row["xgboost"]           = xgboost_baseline(X_train, y_train, X_test, y_test, args.seed)
 
+        print("  Running XGBoostEndpoints...")
+        row["xgboost_endpoints"] = xgboost_baseline(
+            X_train, y_train, X_test, y_test, args.seed, feature_mode="endpoints"
+        )
+
+        print("  Running XGBoostInitial...")
+        row["xgboost_initial"] = xgboost_baseline(
+            X_train, y_train, X_test, y_test, args.seed, feature_mode="initial"
+        )
+
+        print("  Running XGBoostInitialNoContext...")
+        row["xgboost_initial_no_context"] = xgboost_baseline(
+            X_train,
+            y_train,
+            X_test,
+            y_test,
+            args.seed,
+            feature_mode="initial_no_context",
+        )
+
         all_results.append(row)
 
-        for name in ["majority_class", "energy_threshold", "xgboost"]:
+        for name in [
+            "majority_class",
+            "energy_threshold",
+            "xgboost",
+            "xgboost_endpoints",
+            "xgboost_initial",
+            "xgboost_initial_no_context",
+        ]:
             r = row[name]
             if "error" in r:
                 print(f"  [{pct}%] {name:<22} ERROR: {r['error']}")

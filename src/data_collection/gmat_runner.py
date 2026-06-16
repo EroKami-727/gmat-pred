@@ -115,8 +115,10 @@ class MissionConfig:
             r2 = tgt["orbit_radius"]
             a_t = (r1 + r2) / 2.0
             t_hohmann_s = math.pi * math.sqrt(a_t**3 / SUN_MU)
-            # Add 20% margin, convert to days
-            self.prop_days = min(t_hohmann_s * 1.2 / 86400.0, 3650.0)  # cap at 10 years
+            # Add 20% margin, convert to days.  Outer planets need the full
+            # transfer window; a 10-year cap prevents Neptune from reaching
+            # closest approach in this simplified model.
+            self.prop_days = t_hohmann_s * 1.2 / 86400.0
 
         # Capture/impact radius (stop sim if we get this close)
         self.capture_radius = min(500.0, self.target_radius * 0.3)
@@ -340,31 +342,30 @@ def _rk4_step(state: np.ndarray, t: float, dt: float, cfg: MissionConfig) -> np.
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _adaptive_integration_dt(
-    r: np.ndarray, t: float, cfg: MissionConfig,
-    dt_min: float = 10.0, dt_max: float = 300.0,
+    r: np.ndarray,
+    t: float,
+    cfg: MissionConfig,
+    time_step: float,
 ) -> float:
     """
-    Return a fine RK4 sub-step near planets, coarse during cruise.
+    Return a physics-motivated RK4 sub-step for the current state.
 
-    Thresholds:
-      - Within 15% of source SOI (departure zone): dt_min
-      - Within 20% of target SOI (arrival zone):   dt_min
-      - Cruise phase (everything else):             dt_max
-
-    This is equivalent to adaptive step-size control (Dormand-Prince style)
-    but with physics-motivated switching rather than error estimation.
-    Both dt_min and dt_max are bounded above by time_step in the caller
-    so subs >= 1 is always guaranteed.
+    Moon propagation retains the validated 10-second cap. Interplanetary
+    propagation uses 30 seconds near either body, 300 seconds during target
+    approach, and 900 seconds during deep-space cruise.
     """
+    if cfg.source_name == "earth" and cfg.target_name == "moon":
+        return min(time_step, 10.0)
+
     r_from_source = np.linalg.norm(r)
     target_pos = _target_ephemeris(t, cfg)
     r_from_target = np.linalg.norm(r - target_pos)
 
-    if r_from_source < cfg.source_soi * 0.15:
-        return dt_min
-    if r_from_target < cfg.target_soi * 0.20:
-        return dt_min
-    return dt_max
+    if r_from_source < 100_000.0 or r_from_target < 250_000.0:
+        return min(time_step, 30.0)
+    if r_from_target < 5.0 * cfg.target_soi:
+        return min(time_step, 300.0)
+    return min(time_step, 900.0)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -398,13 +399,17 @@ def run_synthetic(params: MissionParams, time_step: float = 1800.0) -> pd.DataFr
     n_steps = int(total_secs / time_step)
 
     rows = []
-    min_target_rmag = 999999999.0
+    min_target_rmag = math.inf
     crashed_source = False
+    terminated = False
     closest_state = None
     closest_target_pos = None
     closest_t = 0.0
 
     for step_i in range(n_steps + 1):
+        if terminated:
+            break
+
         t = step_i * time_step
         r_current, v_current = state[:3], state[3:]
 
@@ -459,17 +464,45 @@ def run_synthetic(params: MissionParams, time_step: float = 1800.0) -> pd.DataFr
             -1, "", 0.0,
         ])
 
-        # Step forward with adaptive sub-step (fine near planets, coarse during cruise)
+        # Step forward with adaptive sub-stepping.
         if step_i < n_steps:
-            adt = _adaptive_integration_dt(r_current, t, cfg)
-            subs = max(1, round(time_step / min(adt, time_step)))
-            actual_dt = time_step / subs
-            for _ in range(subs):
-                state = _rk4_step(state, t, actual_dt, cfg)
-                t += actual_dt
+            segment_end = t + time_step
+            while t < segment_end:
+                dt = _adaptive_integration_dt(state[:3], t, cfg, time_step)
+                dt = min(dt, segment_end - t)
+                if dt <= 0:
+                    break
+                state = _rk4_step(state, t, dt, cfg)
+                t += dt
+
+                r_step, v_step = state[:3], state[3:]
+                source_rmag_step = np.linalg.norm(r_step)
+                if source_rmag_step < cfg.source_radius:
+                    crashed_source = True
+                    terminated = True
+                    break
+
+                target_pos_after = _target_ephemeris(t, cfg)
+                target_rmag_after = np.linalg.norm(r_step - target_pos_after)
+                if target_rmag_after < min_target_rmag:
+                    min_target_rmag = target_rmag_after
+                    closest_state = (r_step.copy(), v_step.copy())
+                    closest_target_pos = target_pos_after.copy()
+                    closest_t = t
+
+                if target_rmag_after < cfg.capture_radius:
+                    terminated = True
+                    break
 
     if not rows:
         return _empty_failure(params, cfg)
+
+    if closest_state is None or closest_target_pos is None or not math.isfinite(min_target_rmag):
+        df = pd.DataFrame(rows, columns=COLUMNS)
+        df["label"] = 0
+        df["failure_type"] = "degenerate_orbit"
+        df["min_target_rmag"] = min_target_rmag if math.isfinite(min_target_rmag) else cfg.miss_distance * 2
+        return df
 
     # 4. Determine final outcome using closest approach to target
     r_close, v_close = closest_state

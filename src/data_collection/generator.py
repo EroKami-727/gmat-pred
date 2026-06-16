@@ -30,6 +30,20 @@ SUN_MU = 1.32712440018e11  # km³/s² — Sun gravitational parameter
 AU_KM = 1.496e8            # km per AU
 
 PLANET_REGISTRY: Dict[str, Dict[str, float]] = {
+    "mercury": {
+        "mu":          22031.86855,         # km^3/s^2
+        "radius":      2439.7,              # km
+        "soi":         112000.0,            # km
+        "orbit_radius": 0.387 * AU_KM,      # km
+        "orbit_period_days": 87.969,
+    },
+    "venus": {
+        "mu":          324858.592,           # km^3/s^2
+        "radius":      6051.8,               # km
+        "soi":         616000.0,             # km
+        "orbit_radius": 0.723 * AU_KM,       # km
+        "orbit_period_days": 224.701,
+    },
     "earth": {
         "mu":          398600.4418,          # km³/s²
         "radius":      6371.0,               # km
@@ -98,6 +112,85 @@ EARTH_MOON_NOMINAL = {
     "ECC":   0.001,
 }
 
+# Corrected nominal for the repository's simplified Earth-Mars propagator.
+# Found by src.data_collection.mars_targeter with adaptive near-body RK4 steps.
+EARTH_MARS_NOMINAL = {
+    "TOI_V": 5.8735,
+    "TOI_N": 0.0,
+    "TOI_B": 0.0,
+    "RAAN":  0.0,
+    "AOP":   299.9800,
+    "INC":   0.0,
+    "SMA":   6571.0,
+    "ECC":   0.001,
+}
+
+EARTH_MERCURY_NOMINAL = {
+    "TOI_V": 7.3850,
+    "TOI_N": 0.0,
+    "TOI_B": 0.0,
+    "RAAN":  0.0,
+    "AOP":   304.875,
+    "INC":   0.0,
+    "SMA":   6571.0,
+    "ECC":   0.001,
+}
+
+EARTH_VENUS_NOMINAL = {
+    "TOI_V": 4.0205,
+    "TOI_N": 0.0,
+    "TOI_B": 0.0,
+    "RAAN":  0.0,
+    "AOP":   39.2000,
+    "INC":   0.0,
+    "SMA":   6571.0,
+    "ECC":   0.001,
+}
+
+EARTH_JUPITER_NOMINAL = {
+    "TOI_V": 6.02105,
+    "TOI_N": 0.0,
+    "TOI_B": 0.0,
+    "RAAN":  0.0,
+    "AOP":   314.842125,
+    "INC":   0.0,
+    "SMA":   6571.0,
+    "ECC":   0.001,
+}
+
+EARTH_SATURN_NOMINAL = {
+    "TOI_V": 7.977878,
+    "TOI_N": 0.0,
+    "TOI_B": 0.0,
+    "RAAN":  0.0,
+    "AOP":   295.0,
+    "INC":   0.0,
+    "SMA":   6571.0,
+    "ECC":   0.001,
+}
+
+EARTH_URANUS_NOMINAL = {
+    "TOI_V": 11.11988,
+    "TOI_N": 0.0,
+    "TOI_B": 0.0,
+    "RAAN":  0.0,
+    "AOP":   282.240,
+    "INC":   0.0,
+    "SMA":   6571.0,
+    "ECC":   0.001,
+}
+
+EARTH_NEPTUNE_NOMINAL = {
+    "TOI_V": 4.59998984,
+    "TOI_N": 0.0,
+    "TOI_B": 0.0,
+    "RAAN":  0.0,
+    "AOP":   282.23985,
+    "INC":   0.0,
+    "SMA":   6571.0,
+    "ECC":   0.001,
+}
+
 # Default dispersion bounds for Earth-Moon
 EARTH_MOON_DISPERSION = {
     "dv_V":  (-0.006,  0.006),   # km/s
@@ -106,6 +199,69 @@ EARTH_MOON_DISPERSION = {
     "RAAN":  (-0.6,    0.6),     # deg
     "AOP":   (-0.6,    0.6),     # deg
     "INC":   (-0.1,    0.1),     # deg
+}
+
+EARTH_MARS_DISPERSION = {
+    "dv_V":  (-0.0020, 0.0020),
+    "dv_N":  (-0.0001, 0.0001),
+    "dv_B":  (-0.0001, 0.0001),
+    "RAAN":  (-0.005,  0.005),
+    "AOP":   (-0.04,   0.04),
+    "INC":   (-0.005,  0.005),
+}
+
+EARTH_MERCURY_DISPERSION = {
+    "dv_V":  (-0.0030, 0.0030),
+    "dv_N":  (-0.0002, 0.0002),
+    "dv_B":  (-0.0002, 0.0002),
+    "RAAN":  (-0.02,   0.02),
+    "AOP":   (-0.08,   0.08),
+    "INC":   (-0.01,   0.01),
+}
+
+EARTH_VENUS_DISPERSION = {
+    "dv_V":  (-0.0030, 0.0030),
+    "dv_N":  (-0.0002, 0.0002),
+    "dv_B":  (-0.0002, 0.0002),
+    "RAAN":  (-0.02,   0.02),
+    "AOP":   (-0.08,   0.08),
+    "INC":   (-0.01,   0.01),
+}
+
+EARTH_JUPITER_DISPERSION = {
+    "dv_V":  (-0.0200, 0.0200),
+    "dv_N":  (-0.0002, 0.0002),
+    "dv_B":  (-0.0002, 0.0002),
+    "RAAN":  (-0.02,   0.02),
+    "AOP":   (-0.30,   0.30),
+    "INC":   (-0.01,   0.01),
+}
+
+EARTH_SATURN_DISPERSION = {
+    "dv_V":  (-0.0200, 0.0200),
+    "dv_N":  (-0.0002, 0.0002),
+    "dv_B":  (-0.0002, 0.0002),
+    "RAAN":  (-0.02,   0.02),
+    "AOP":   (-0.30,   0.30),
+    "INC":   (-0.01,   0.01),
+}
+
+EARTH_URANUS_DISPERSION = {
+    "dv_V":  (-0.0200, 0.0200),
+    "dv_N":  (-0.0002, 0.0002),
+    "dv_B":  (-0.0002, 0.0002),
+    "RAAN":  (-0.02,   0.02),
+    "AOP":   (-0.30,   0.30),
+    "INC":   (-0.01,   0.01),
+}
+
+EARTH_NEPTUNE_DISPERSION = {
+    "dv_V":  (-0.0200, 0.0200),
+    "dv_N":  (-0.0002, 0.0002),
+    "dv_B":  (-0.0002, 0.0002),
+    "RAAN":  (-0.02,   0.02),
+    "AOP":   (-0.30,   0.30),
+    "INC":   (-0.01,   0.01),
 }
 
 
@@ -120,6 +276,20 @@ def _hohmann_nominal(source: str, target: str) -> Dict[str, float]:
     """
     if source == "earth" and target == "moon":
         return EARTH_MOON_NOMINAL.copy()
+    if source == "earth" and target == "mars":
+        return EARTH_MARS_NOMINAL.copy()
+    if source == "earth" and target == "mercury":
+        return EARTH_MERCURY_NOMINAL.copy()
+    if source == "earth" and target == "venus":
+        return EARTH_VENUS_NOMINAL.copy()
+    if source == "earth" and target == "jupiter":
+        return EARTH_JUPITER_NOMINAL.copy()
+    if source == "earth" and target == "saturn":
+        return EARTH_SATURN_NOMINAL.copy()
+    if source == "earth" and target == "uranus":
+        return EARTH_URANUS_NOMINAL.copy()
+    if source == "earth" and target == "neptune":
+        return EARTH_NEPTUNE_NOMINAL.copy()
 
     src = PLANET_REGISTRY[source]
     tgt = PLANET_REGISTRY[target]
@@ -172,6 +342,20 @@ def _hohmann_dispersions(source: str, target: str) -> Dict[str, tuple]:
     """
     if source == "earth" and target == "moon":
         return EARTH_MOON_DISPERSION.copy()
+    if source == "earth" and target == "mars":
+        return EARTH_MARS_DISPERSION.copy()
+    if source == "earth" and target == "mercury":
+        return EARTH_MERCURY_DISPERSION.copy()
+    if source == "earth" and target == "venus":
+        return EARTH_VENUS_DISPERSION.copy()
+    if source == "earth" and target == "jupiter":
+        return EARTH_JUPITER_DISPERSION.copy()
+    if source == "earth" and target == "saturn":
+        return EARTH_SATURN_DISPERSION.copy()
+    if source == "earth" and target == "uranus":
+        return EARTH_URANUS_DISPERSION.copy()
+    if source == "earth" and target == "neptune":
+        return EARTH_NEPTUNE_DISPERSION.copy()
 
     nominal = _hohmann_nominal(source, target)
     toi_v = nominal["TOI_V"]
@@ -312,16 +496,87 @@ def generate_inputs(
         if i < n_biased:
             # For Earth-Moon, the corridor is tiny. 10% of nominal dispersion
             # is more likely to hit it than 25%.
-            scale = 0.1 if (source == "earth" and target == "moon") else 0.25
+            if source == "earth" and target == "moon":
+                scale = 0.1
+            elif source == "earth" and target == "mars":
+                scale = 0.05
+            elif source == "earth" and target == "mercury":
+                scale = 0.05
+            elif source == "earth" and target == "venus":
+                scale = 0.05
+            elif source == "earth" and target == "jupiter":
+                scale = 0.05
+            elif source == "earth" and target == "saturn":
+                scale = 0.05
+            elif source == "earth" and target == "uranus":
+                scale = 0.05
+            elif source == "earth" and target == "neptune":
+                scale = 0.05
+            else:
+                scale = 0.25
         else:
             scale = 1.0
 
-        d_V    = rng.uniform(dispersions["dv_V"][0] * scale, dispersions["dv_V"][1] * scale)
-        d_N    = rng.uniform(dispersions["dv_N"][0] * scale, dispersions["dv_N"][1] * scale)
-        d_B    = rng.uniform(dispersions["dv_B"][0] * scale, dispersions["dv_B"][1] * scale)
-        d_RAAN = rng.uniform(dispersions["RAAN"][0] * scale, dispersions["RAAN"][1] * scale)
-        d_AOP  = rng.uniform(dispersions["AOP"][0]  * scale, dispersions["AOP"][1]  * scale)
-        d_INC  = rng.uniform(dispersions["INC"][0]  * scale, dispersions["INC"][1]  * scale)
+        if i < n_biased and source == "earth" and target == "mars":
+            # Mars capture is a very thin corridor in this simplified model.
+            # Independent large V/AOP perturbations mostly leave the corridor,
+            # so biased samples use a tight validated neighborhood around the
+            # corrected nominal.
+            d_V = rng.uniform(-0.00002, 0.00002)
+            d_AOP = rng.uniform(-0.0002, 0.0002)
+            d_N = rng.uniform(-0.000005, 0.000005)
+            d_B = rng.uniform(-0.000005, 0.000005)
+            d_RAAN = rng.uniform(-0.0002, 0.0002)
+            d_INC = rng.uniform(-0.0002, 0.0002)
+        elif i < n_biased and source == "earth" and target == "mercury":
+            d_V = rng.uniform(-0.00002, 0.00002)
+            d_AOP = rng.uniform(-0.0002, 0.0002)
+            d_N = rng.uniform(-0.00001, 0.00001)
+            d_B = rng.uniform(-0.00001, 0.00001)
+            d_RAAN = rng.uniform(-0.0002, 0.0002)
+            d_INC = rng.uniform(-0.0002, 0.0002)
+        elif i < n_biased and source == "earth" and target == "venus":
+            d_V = rng.uniform(-0.000007, 0.000007)
+            d_AOP = rng.uniform(-0.0004, 0.0004)
+            d_N = 0.0
+            d_B = 0.0
+            d_RAAN = 0.0
+            d_INC = 0.0
+        elif i < n_biased and source == "earth" and target == "jupiter":
+            d_V = rng.uniform(-0.00003, 0.00003)
+            d_AOP = -7.5 * d_V + rng.uniform(-0.00003, 0.00003)
+            d_N = 0.0
+            d_B = 0.0
+            d_RAAN = 0.0
+            d_INC = 0.0
+        elif i < n_biased and source == "earth" and target == "saturn":
+            d_V = rng.uniform(-0.000004, 0.000004)
+            d_AOP = 0.0
+            d_N = 0.0
+            d_B = 0.0
+            d_RAAN = 0.0
+            d_INC = 0.0
+        elif i < n_biased and source == "earth" and target == "uranus":
+            d_V = rng.uniform(-0.000006, 0.000006)
+            d_AOP = 0.0
+            d_N = 0.0
+            d_B = 0.0
+            d_RAAN = 0.0
+            d_INC = 0.0
+        elif i < n_biased and source == "earth" and target == "neptune":
+            d_V = rng.uniform(-0.00000070, 0.00000070)
+            d_AOP = 0.0
+            d_N = 0.0
+            d_B = 0.0
+            d_RAAN = 0.0
+            d_INC = 0.0
+        else:
+            d_V    = rng.uniform(dispersions["dv_V"][0] * scale, dispersions["dv_V"][1] * scale)
+            d_N    = rng.uniform(dispersions["dv_N"][0] * scale, dispersions["dv_N"][1] * scale)
+            d_B    = rng.uniform(dispersions["dv_B"][0] * scale, dispersions["dv_B"][1] * scale)
+            d_RAAN = rng.uniform(dispersions["RAAN"][0] * scale, dispersions["RAAN"][1] * scale)
+            d_AOP  = rng.uniform(dispersions["AOP"][0]  * scale, dispersions["AOP"][1]  * scale)
+            d_INC  = rng.uniform(dispersions["INC"][0]  * scale, dispersions["INC"][1]  * scale)
 
         missions.append(MissionParams(
             sim_id=i,
