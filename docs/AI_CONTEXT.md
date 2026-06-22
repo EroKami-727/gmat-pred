@@ -17,7 +17,22 @@ that the Transformer is the strongest classifier.
 - **ML:** PyTorch `TrajectoryTransformer`, `TrajectoryLSTM`, and XGBoost baselines.
 - **Backend:** FastAPI at `src/api/main.py` — `uvicorn src.api.main:app --port 8000` from project root
 - **Frontend:** React 18 + Vite (no TypeScript), Recharts, Tailwind v4 (unreliable — use inline styles)
-- **Final local data:** 80K missions at `data/merged_through_neptune_15min/`
+- **Local multi-planet data:** generated on this machine at
+  `/media/Data/Coding/gmat-pred/data/` (NTFS drive, not the repo — too
+  large for the Linux partition). Mercury, Venus, Mars, Jupiter, Saturn,
+  Uranus generated via the original `build_database.py`; Neptune generated
+  via the Numba JIT fast path (`experiments/numba_jit/`, see
+  `docs/NUMBA_JIT_PROPAGATOR.md`). Individual planet source folders are
+  kept at `/media/Data/Coding/gmat-pred/data/<planet>/` (regenerating
+  Uranus/Saturn took 5-12 hours each with the original pipeline — do not
+  delete without explicit confirmation). Final merged dataset (80K
+  missions, all 8 sources) at
+  `/media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet` —
+  this is the canonical path everything in this session's reports points
+  at. An earlier intermediate merge without Neptune (`merged_all/`,
+  70K missions) was deleted as redundant once Neptune was folded in.
+  The `data/merged_through_neptune_15min/` path referenced elsewhere in
+  this doc was the teammate's machine, not this one.
 - **Important:** generated data, reports, logs, and checkpoints are ignored by Git.
 
 ## Model — TrajectoryTransformer (src/ml/model.py)
@@ -107,6 +122,13 @@ src/
     mars_targeter.py    diagnostic targeting with production dynamics
     exact_targeter.py   checkpointed exact calibration grids
     adaptive_targeter.py adaptive outer-planet corridor refinement
+
+experiments/
+  numba_jit/           Numba-JIT-compiled fast path for outer-planet
+                       generation (26-37x speedup at production cadence).
+                       Validated against real Jupiter data — see
+                       docs/NUMBA_JIT_PROPAGATOR.md. Used to generate the
+                       Neptune dataset. Does not modify gmat_runner.py.
 
 frontend/src/
   App.jsx                tab router: OVERVIEW/SIMULATOR/TRAINING/ABLATION/DATASET

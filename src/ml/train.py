@@ -157,6 +157,29 @@ def main():
     parser.add_argument("--downsample-factor", type=int, default=15, help="Keep every Nth timestep during loading")
     parser.add_argument("--seed",       type=int,   default=42,  help="Random seed for data split and weight init")
     parser.add_argument("--output-dir", type=str, default="models")
+    parser.add_argument("--balance-targets", action="store_true",
+                        help="Oversample target bodies during training via "
+                             "WeightedRandomSampler, inverse to target mission count "
+                             "(domain generalization baseline). val/test stay unweighted "
+                             "so metrics remain honest. NOTE: a near no-op if all targets "
+                             "have equal mission counts — combine with --upweight-targets "
+                             "to oversample empirically weak (not just rare) targets.")
+    parser.add_argument("--upweight-targets", type=str, nargs="+", default=None,
+                        help="Target body names to oversample beyond inverse-count "
+                             "weighting, e.g. mars mercury moon venus. Implies "
+                             "--balance-targets.")
+    parser.add_argument("--upweight-factor", type=float, default=2.0,
+                        help="Multiplier applied to --upweight-targets (default 2x).")
+    parser.add_argument("--resume-from", type=str, default=None,
+                        help="Path to a model checkpoint (.pt) to warm-start from. "
+                             "Optimizer/scheduler state is NOT resumed (not persisted "
+                             "by this script) — only model weights continue.")
+    parser.add_argument("--resume-best-val-loss", type=float, default=None,
+                        help="Val loss already achieved by --resume-from, so a worse "
+                             "epoch during continuation can't overwrite a better checkpoint.")
+    parser.add_argument("--epoch-offset", type=int, default=0,
+                        help="Epoch number to start counting from when resuming, so "
+                             "metrics history/logs reflect true cumulative epoch count.")
     args = parser.parse_args()
 
     # ── GPU Detection ──
@@ -171,6 +194,10 @@ def main():
     # 1. Create DataLoaders
     print(f"▸ Loading dataset and preparing splits...")
     use_pin_memory = device.type == "cuda"
+    target_weight_overrides = None
+    if args.upweight_targets:
+        target_weight_overrides = {t: args.upweight_factor for t in args.upweight_targets}
+
     train_loader, val_loader, test_loader, scaler = create_dataloaders(
         args.data,
         target_mode=args.task,
@@ -178,6 +205,8 @@ def main():
         early_exit_frac=args.early_exit,
         batch_size=args.batch_size,
         seed=args.seed,
+        balance_targets=args.balance_targets or bool(target_weight_overrides),
+        target_weight_overrides=target_weight_overrides,
     )
 
     # 2. Initialize Model — pull input_dim dynamically from dataset
@@ -216,19 +245,26 @@ def main():
             input_dim=input_dim, output_dim=output_dim, task=args.task,
         ).to(device)
 
+    if args.resume_from:
+        model.load_state_dict(torch.load(args.resume_from, map_location=device, weights_only=True))
+        print(f"  Resumed weights  : {args.resume_from}")
+
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=3, factor=0.5)
 
     # 3. Training Loop
     os.makedirs(args.output_dir, exist_ok=True)
-    best_val_loss = float('inf')
+    best_val_loss = args.resume_best_val_loss if args.resume_best_val_loss is not None else float('inf')
     metrics_history = []
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f"  Model params     : {total_params:,}")
+    if args.resume_best_val_loss is not None:
+        print(f"  Protected best   : val_loss={best_val_loss:.4f} (won't overwrite checkpoint unless beaten)")
     print(f"\n▸ Starting training for {args.epochs} epochs...")
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch_i in range(1, args.epochs + 1):
+        epoch = epoch_i + args.epoch_offset
         t0 = time.time()
         train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device, args.task)
         val_loss, val_acc, val_preds, val_labels = validate(model, val_loader, criterion, device, args.task)
@@ -271,6 +307,10 @@ def main():
 
     # Save full metrics history for dashboard plotting
     metrics_path = Path(args.output_dir) / f"metrics_{args.model}_{args.task}.json"
+    if args.epoch_offset and metrics_path.exists():
+        with open(metrics_path) as f:
+            prior_history = json.load(f)
+        metrics_history = prior_history + metrics_history
     with open(metrics_path, "w") as f:
         json.dump(metrics_history, f, indent=2)
     print(f"▸ Metrics saved to {metrics_path}")

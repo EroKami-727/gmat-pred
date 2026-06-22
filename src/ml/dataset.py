@@ -37,7 +37,7 @@ from typing import Literal, Optional, Tuple
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from sklearn.preprocessing import RobustScaler
 
 
@@ -120,22 +120,27 @@ class TrajectoryDataset(Dataset):
         max_seq_len: Optional[int] = None,
         early_exit_frac: float = 1.0,
         scaler: Optional[RobustScaler] = None,
+        track_target_body: bool = False,
     ):
         self.target_mode = target_mode
         self.downsample_factor = downsample_factor
         self.early_exit_frac = early_exit_frac
+        self.track_target_body = track_target_body
 
         # ── Streaming Load (Memory-Safe) ──
         import pyarrow.parquet as pq
         pf = pq.ParquetFile(parquet_path)
-        
+
         # Columns needed for features + labels
         needed_cols = list(set(FEATURE_COLS + ["mission_id", "label", "failure_type", "min_target_rmag", "elapsed_secs"]))
+        if track_target_body:
+            needed_cols.append("target_body")
         needed_cols = [c for c in needed_cols if c in pf.schema_arrow.names]
-        
+
         self.sequences = []
         self.labels = []
         self.mission_ids_ordered = []
+        self.target_bodies: list[str] = []
         
         # Buffer for current mission building
         current_mission_id = None
@@ -228,6 +233,8 @@ class TrajectoryDataset(Dataset):
         self.sequences.append(features)
         self.labels.append(target)
         self.mission_ids_ordered.append(mid)
+        if self.track_target_body:
+            self.target_bodies.append(str(row["target_body"]))
 
 
     def __len__(self) -> int:
@@ -272,11 +279,32 @@ def create_dataloaders(
     batch_size: int = 32,
     seed: int = 42,
     num_workers: int = 0,
+    balance_targets: bool = False,
+    target_weight_overrides: Optional[dict[str, float]] = None,
 ) -> Tuple[DataLoader, DataLoader, DataLoader, RobustScaler]:
     """
     Create train / val / test DataLoaders from a Parquet database.
 
     The scaler is fitted ONLY on the training set to prevent data leakage.
+
+    balance_targets : bool
+        If True, the train_loader uses a WeightedRandomSampler over
+        target_body, without adding target identity as a model input
+        feature — it only changes which missions get sampled more often
+        during training. val/test loaders are never balanced, so
+        generalization metrics stay honest.
+
+        Base weight is inverse to each target's mission count in the
+        train split. NOTE: if targets have equal counts (as in this
+        project's generated dataset — 10,000 missions per target), this
+        base weighting is a near no-op, since there is nothing to balance
+        by count. Use target_weight_overrides to explicitly upweight
+        targets that are empirically *harder*, not just rarer.
+
+    target_weight_overrides : dict[str, float] or None
+        Per-target multiplier applied on top of the base inverse-count
+        weight, e.g. {"mars": 2.0, "mercury": 2.0, "moon": 2.0, "venus": 2.0}
+        to oversample known-weak targets by 2x. Implies balance_targets=True.
 
     Returns
     -------
@@ -321,9 +349,11 @@ def create_dataloaders(
             w_test.write_batch(batch.filter(pa.array(np.isin(batch_mids, list(test_ids)))))
 
     # Build datasets — scaler fitted on train only
+    track_targets = balance_targets or bool(target_weight_overrides)
     train_ds = TrajectoryDataset(
         train_path, target_mode, downsample_factor,
         max_seq_len, early_exit_frac, scaler=None,
+        track_target_body=track_targets,
     )
     scaler = train_ds.scaler  # Fitted on training data
 
@@ -344,11 +374,32 @@ def create_dataloaders(
     val_path.unlink(missing_ok=True)
     test_path.unlink(missing_ok=True)
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    if track_targets:
+        overrides = target_weight_overrides or {}
+        counts: dict[str, int] = {}
+        for body in train_ds.target_bodies:
+            counts[body] = counts.get(body, 0) + 1
+        per_target_weight = {
+            body: (1.0 / cnt) * overrides.get(body, 1.0)
+            for body, cnt in counts.items()
+        }
+        weights = [per_target_weight[body] for body in train_ds.target_bodies]
+        sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+        train_loader = DataLoader(train_ds, batch_size=batch_size, sampler=sampler, num_workers=num_workers)
+    else:
+        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     print(f"  ─── Dataset Summary ───")
+    if track_targets:
+        print(f"  Target balancing : ON  ({len(counts)} targets)")
+        for body, cnt in sorted(counts.items()):
+            override = overrides.get(body, 1.0)
+            print(
+                f"    {body:<10}: {cnt} missions, base_weight={1.0/cnt:.6f}, "
+                f"override={override:.2f}x, effective_weight={per_target_weight[body]:.6f}"
+            )
     print(f"  Target mode      : {target_mode}")
     print(f"  Downsample factor: {downsample_factor}x")
     print(f"  Early-exit frac  : {early_exit_frac:.0%}")

@@ -110,7 +110,8 @@ def run(args: argparse.Namespace) -> list[dict]:
                 tuned = metric["test_at_train_threshold"]
                 print(
                     f"    @0.5 Acc={metric['acc']:.2%} F1={metric['f1']:.3f} "
-                    f"AUC={metric['auc']:.3f} | train-thr "
+                    f"AUC={metric['auc']:.3f} PR-AUC={metric['pr_auc']:.3f} "
+                    f"Brier={metric['brier_score']:.3f} ECE={metric['ece']:.3f} | train-thr "
                     f"Acc={tuned['acc']:.2%} F1={tuned['f1']:.3f}"
                 )
 

@@ -15,7 +15,7 @@ from statistics import mean, stdev
 from typing import Any
 
 
-METRICS = ("acc", "f1", "auc")
+METRICS = ("acc", "f1", "auc", "pr_auc", "brier_score", "ece")
 
 
 def _load_json(path: Path) -> Any:
@@ -80,20 +80,41 @@ def _random_split_table(random_split: dict[str, Any]) -> list[str]:
 
 
 def _grouped_table(grouped: list[dict[str, Any]]) -> list[str]:
-    lines = [
-        "## Leave-One-Target-Out Audit",
-        "",
-        "| Held-out target | Success rate | Summary F1 | Summary AUC | Initial-no-context F1 | Initial-no-context AUC |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
-    ]
-    for row in grouped:
-        summary = row["xgboost_summary"]
-        initial = row["xgboost_initial_no_context"]
-        lines.append(
-            f"| {row['heldout_target']} | {_pct(float(row['test_success_rate']))} | "
-            f"{_fmt(float(summary['f1']))} | {_fmt(float(summary['auc']))} | "
-            f"{_fmt(float(initial['f1']))} | {_fmt(float(initial['auc']))} |"
-        )
+    has_calibration = all("pr_auc" in row.get("xgboost_summary", {}) for row in grouped)
+
+    if has_calibration:
+        lines = [
+            "## Leave-One-Target-Out Audit",
+            "",
+            "| Held-out target | Success rate | Summary F1 | Summary AUC | Summary PR-AUC | Summary Brier | Summary ECE | Initial-no-context F1 | Initial-no-context AUC |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+        for row in grouped:
+            summary = row["xgboost_summary"]
+            initial = row["xgboost_initial_no_context"]
+            lines.append(
+                f"| {row['heldout_target']} | {_pct(float(row['test_success_rate']))} | "
+                f"{_fmt(float(summary['f1']))} | {_fmt(float(summary['auc']))} | "
+                f"{_fmt(float(summary['pr_auc']))} | {_fmt(float(summary['brier_score']))} | "
+                f"{_fmt(float(summary['ece']))} | "
+                f"{_fmt(float(initial['f1']))} | {_fmt(float(initial['auc']))} |"
+            )
+    else:
+        lines = [
+            "## Leave-One-Target-Out Audit",
+            "",
+            "| Held-out target | Success rate | Summary F1 | Summary AUC | Initial-no-context F1 | Initial-no-context AUC |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+        for row in grouped:
+            summary = row["xgboost_summary"]
+            initial = row["xgboost_initial_no_context"]
+            lines.append(
+                f"| {row['heldout_target']} | {_pct(float(row['test_success_rate']))} | "
+                f"{_fmt(float(summary['f1']))} | {_fmt(float(summary['auc']))} | "
+                f"{_fmt(float(initial['f1']))} | {_fmt(float(initial['auc']))} |"
+            )
+
     lines.extend(
         [
             "",
@@ -114,24 +135,67 @@ def _grouped_table(grouped: list[dict[str, Any]]) -> list[str]:
             f"{_fmt(block['auc']['mean'])} +/- {_fmt(block['auc']['std'])} | "
             f"{_fmt(block['f1']['min'])} |"
         )
+
+    if has_calibration:
+        lines.extend(
+            [
+                "",
+                "Aggregate calibration (summary mode only):",
+                "",
+                "| Metric | Mean +/- std | Worst |",
+                "| --- | ---: | ---: |",
+            ]
+        )
+        block = _metric_block(grouped, "xgboost_summary")
+        for metric, label, worst_is_max in [
+            ("pr_auc", "PR-AUC", False),
+            ("brier_score", "Brier score", True),
+            ("ece", "ECE", True),
+        ]:
+            worst = block[metric]["max"] if worst_is_max else block[metric]["min"]
+            lines.append(
+                f"| {label} | {_fmt(block[metric]['mean'])} +/- {_fmt(block[metric]['std'])} | "
+                f"{_fmt(worst)} |"
+            )
     return lines
 
 
 def _parameter_table(parameter: list[dict[str, Any]]) -> list[str]:
-    lines = [
-        "## Parameter-Corridor Holdout Audit",
-        "",
-        "| Variable | Bin | Success rate | Summary F1 | Summary AUC | Initial-no-context F1 | Initial-no-context AUC |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ]
-    for row in parameter:
-        summary = row["xgboost_summary"]
-        initial = row["xgboost_initial_no_context"]
-        lines.append(
-            f"| {row['variable']} | {row['heldout_bin']} | {_pct(float(row['test']['success_rate']))} | "
-            f"{_fmt(float(summary['f1']))} | {_fmt(float(summary['auc']))} | "
-            f"{_fmt(float(initial['f1']))} | {_fmt(float(initial['auc']))} |"
-        )
+    has_calibration = all("pr_auc" in row.get("xgboost_summary", {}) for row in parameter)
+
+    if has_calibration:
+        lines = [
+            "## Parameter-Corridor Holdout Audit",
+            "",
+            "| Variable | Bin | Success rate | Summary F1 | Summary AUC | Summary PR-AUC | Summary Brier | Summary ECE | Initial-no-context F1 | Initial-no-context AUC |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+        for row in parameter:
+            summary = row["xgboost_summary"]
+            initial = row["xgboost_initial_no_context"]
+            lines.append(
+                f"| {row['variable']} | {row['heldout_bin']} | {_pct(float(row['test']['success_rate']))} | "
+                f"{_fmt(float(summary['f1']))} | {_fmt(float(summary['auc']))} | "
+                f"{_fmt(float(summary['pr_auc']))} | {_fmt(float(summary['brier_score']))} | "
+                f"{_fmt(float(summary['ece']))} | "
+                f"{_fmt(float(initial['f1']))} | {_fmt(float(initial['auc']))} |"
+            )
+    else:
+        lines = [
+            "## Parameter-Corridor Holdout Audit",
+            "",
+            "| Variable | Bin | Success rate | Summary F1 | Summary AUC | Initial-no-context F1 | Initial-no-context AUC |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+        for row in parameter:
+            summary = row["xgboost_summary"]
+            initial = row["xgboost_initial_no_context"]
+            lines.append(
+                f"| {row['variable']} | {row['heldout_bin']} | {_pct(float(row['test']['success_rate']))} | "
+                f"{_fmt(float(summary['f1']))} | {_fmt(float(summary['auc']))} | "
+                f"{_fmt(float(initial['f1']))} | {_fmt(float(initial['auc']))} |"
+            )
+
     lines.extend(
         [
             "",
@@ -152,6 +216,28 @@ def _parameter_table(parameter: list[dict[str, Any]]) -> list[str]:
             f"{_fmt(block['auc']['mean'])} +/- {_fmt(block['auc']['std'])} | "
             f"{_fmt(block['f1']['min'])} |"
         )
+
+    if has_calibration:
+        lines.extend(
+            [
+                "",
+                "Aggregate calibration (summary mode only):",
+                "",
+                "| Metric | Mean +/- std | Worst |",
+                "| --- | ---: | ---: |",
+            ]
+        )
+        block = _metric_block(parameter, "xgboost_summary")
+        for metric, label, worst_is_max in [
+            ("pr_auc", "PR-AUC", False),
+            ("brier_score", "Brier score", True),
+            ("ece", "ECE", True),
+        ]:
+            worst = block[metric]["max"] if worst_is_max else block[metric]["min"]
+            lines.append(
+                f"| {label} | {_fmt(block[metric]['mean'])} +/- {_fmt(block[metric]['std'])} | "
+                f"{_fmt(worst)} |"
+            )
     return lines
 
 
@@ -199,6 +285,40 @@ def _risk_notes(grouped: list[dict[str, Any]], parameter: list[dict[str, Any]]) 
         )
     if not weak_parameter:
         lines.append("- None")
+
+    has_calibration = (
+        all("pr_auc" in row.get("xgboost_summary", {}) for row in grouped)
+        and all("pr_auc" in row.get("xgboost_summary", {}) for row in parameter)
+    )
+    if has_calibration:
+        miscalibrated_grouped = [
+            (row["heldout_target"], row["xgboost_summary"]["auc"], row["xgboost_summary"]["f1"], row["xgboost_summary"]["ece"])
+            for row in grouped
+            if float(row["xgboost_summary"]["auc"]) >= 0.80 and float(row["xgboost_summary"]["f1"]) < 0.5
+        ]
+        miscalibrated_parameter = [
+            (row["variable"], row["heldout_bin"], row["xgboost_summary"]["auc"], row["xgboost_summary"]["f1"], row["xgboost_summary"]["ece"])
+            for row in parameter
+            if float(row["xgboost_summary"]["auc"]) >= 0.80 and float(row["xgboost_summary"]["f1"]) < 0.7
+        ]
+        lines.extend(
+            [
+                "",
+                "Ranking-works-but-threshold-fails cases (AUC >= 0.80 but F1 collapses at 0.5):",
+                "These are calibration problems, not generalization failures — Platt/isotonic",
+                "recalibration or threshold tuning should fix them without retraining.",
+                "",
+            ]
+        )
+        for target, auc, f1, ece in miscalibrated_grouped:
+            lines.append(f"- {target}: AUC={_fmt(float(auc))}, F1@0.5={_fmt(float(f1))}, ECE={_fmt(float(ece))}")
+        for variable, heldout_bin, auc, f1, ece in miscalibrated_parameter:
+            lines.append(
+                f"- {variable} bin {heldout_bin}: AUC={_fmt(float(auc))}, "
+                f"F1@0.5={_fmt(float(f1))}, ECE={_fmt(float(ece))}"
+            )
+        if not miscalibrated_grouped and not miscalibrated_parameter:
+            lines.append("- None")
     return lines
 
 

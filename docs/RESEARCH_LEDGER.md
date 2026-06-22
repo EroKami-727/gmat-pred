@@ -25,6 +25,138 @@ make the task easy.
   interplanetary cadence.
 - Final EDA: `reports/eda_merged_through_neptune_15min/eda_report.html`
 
+**Note:** the numbers above came from a teammate's machine and were never
+reproduced locally until the local-reproduction pass below. The dataset path
+`data/merged_through_neptune_15min` does not exist on this machine — treat
+it as historical context, not a live path.
+
+## Local Reproduction (2026-06-21)
+
+A full 80,000-mission, 8-source dataset was independently generated and
+merged on this machine — same methodology (calibrated nominals, seed=42,
+35% success bias, early-exit 0.4, downsample 10), not a copy of the
+teammate's data. Mercury/Venus/Mars/Jupiter/Saturn/Uranus via the original
+`build_database.py`; Neptune via a validated Numba JIT fast path
+(`experiments/numba_jit/`, see `docs/NUMBA_JIT_PROPAGATOR.md`, 26-37x
+speedup, validated against real production Jupiter data before trusting it).
+Stored at `/media/Data/Coding/gmat-pred/data/merged_all_v2/` (71 GB, NTFS
+drive — too large for the repo's Linux partition).
+
+- Missions: 80,000 — success rate 32.0% (25,568 success / 54,432 failure),
+  matching the teammate's 0.320 almost exactly. Good sanity check that the
+  independently-generated dataset reproduces the same statistical profile.
+
+### Verified random-split baselines (own data, not the teammate's)
+
+Same config as before: early exit 0.4, downsample 10, seed 42.
+
+| Model | Accuracy | F1 | ROC-AUC |
+|---|---:|---:|---:|
+| Majority | 67.74% | 0.000 | 0.500 |
+| Energy threshold | 44.09% | 0.536 | 0.535 |
+| XGBoost summary | 99.44% | 0.991 | 1.000 |
+| XGBoost endpoints | 99.14% | 0.987 | 0.999 |
+| XGBoost initial | 98.29% | 0.974 | 0.998 |
+| XGBoost initial no context | 98.33% | 0.974 | 0.998 |
+
+Within ~1% of the teammate's reported numbers across the board — confirms
+the local pipeline reproduces the same separability pattern.
+Full table: `docs/STATISTICAL_AUDIT_SUMMARY_LOCAL.md`.
+
+### Calibration audit (new — not in the teammate's original run)
+
+Extended `grouped_baselines.py` / `parameter_holdout_baselines.py` to also
+report PR-AUC, Brier score, ECE, and a confusion matrix per held-out
+target/bin (`src/ml/calibration_utils.py`). This surfaced a distinction the
+original F1/AUC-only audit could not make: **some "weak" targets are
+calibration failures, not generalization failures.**
+
+Ranking-works-but-threshold-fails cases (AUC >= 0.80, F1 collapses at 0.5):
+
+- Uranus (LOTO): AUC=0.992, F1@0.5=0.000, ECE=0.203 — ranking is excellent,
+  the 0.5 threshold is just wrong for this target's probability scale.
+- Venus (LOTO): AUC=0.856, F1@0.5=0.000, ECE=0.335 — same pattern, weaker.
+- TOI_V bin 4 (corridor holdout): AUC=0.978, F1@0.5=0.675, ECE=0.002 — low
+  ECE here, so this one is closer to a genuine sparse-success edge case.
+- AOP bin 1 (corridor holdout): AUC=0.885, F1@0.5=0.388, ECE=0.410 — highest
+  ECE of any case; likely a mix of calibration failure and genuine boundary
+  confusion (57% success rate, near the success/failure decision boundary).
+
+Mars, Mercury, and Moon remain genuinely weak (AUC < 0.6, not just
+miscalibrated) — see error analysis below for why.
+
+### Multi-seed stability (new)
+
+`src/ml/multi_seed_grouped.py` and `src/ml/multi_seed_parameter_holdout.py`
+re-run every LOTO target and every corridor-holdout bin across seeds
+[0,1,2,3,4]. Result: **std=0.000 across all seeds, for every target and
+every bin.** The XGBoost configuration used here has no row/column
+subsampling, so the model fit is deterministic given a fixed train/test
+split — and since LOTO/corridor-holdout splits are themselves deterministic
+(defined by target identity or quantile bin, not by seed), there is no
+seed-to-seed variance to measure. This is a valid finding: it rules out
+training randomness as an explanation for the weak Mars/Mercury/Moon/Venus
+results — they are structural, not noise.
+
+Separately, the **random-split** formal ablation (`src/ml/formal_ablation.py`)
+genuinely varies the train/test partition by seed, and shows real (if tiny)
+variance:
+
+| Model | F1 (mean ± std) | AUC (mean ± std) | ECE (mean ± std) |
+|---|---|---|---|
+| XGBoost initial | 0.974 ± 0.001 | 0.998 ± 0.000 | 0.012 ± 0.000 |
+| XGBoost summary | 0.992 ± 0.001 | 1.000 ± 0.000 | 0.003 ± 0.000 |
+
+Transformer-sequential is reported as a single-run point estimate in the
+same artifact, not a 5-seed CI — retraining the Transformer 5x on this 80K
+dataset would take ~20+ hours on the available hardware (one run is already
+~4-5 hours). This asymmetry is stated explicitly rather than silently
+treating the two legs as equivalent evidence.
+
+### Error analysis (new — `src/ml/error_analysis.py`)
+
+For every weak LOTO target and corridor-holdout bin, computed standardized
+train/test feature-distribution shift across the 13 input features. Result:
+Mars, Mercury, Moon, and Venus all show large shifts in `dist_ratio`,
+`earth_rmag`, `rel_x`, and `norm_target_dist` (0.8-43 standard deviations) —
+features that encode transfer distance and target-body scale. Confusion
+matrices confirm near-total collapse to the majority class for these
+targets (e.g. Mercury: 0 predicted successes out of 2,155 actual successes).
+
+**Interpretation:** full unseen-target transfer fails because each target
+occupies a categorically different physical regime (distance, SOI scale),
+not because the launch-parameter corridor is merely "harder." This is a
+stronger, more specific claim than "generalization is mixed" — it points at
+*why*. Within-target corridor holdout (TOI_V/AOP bins) avoids this because
+the physical regime stays in-distribution; only the parameter values shift.
+Full report: `docs/ERROR_ANALYSIS.md`.
+
+### Multi-planet Transformer (complete)
+
+`models/transformer_multiplanet/` — 50 total epochs (30 + a warm-started
+continuation, since loss had not plateaued at epoch 30). Final test:
+Accuracy 87.67%, F1 0.838, ROC-AUC 0.984. Per-target breakdown (random
+split, all targets present in training) shows Mercury (PR-AUC 0.547) and
+Moon (PR-AUC 0.851) as the hardest targets even in-distribution — full
+detail in `docs/PAPER_READY_SUMMARY.md` §5b.
+
+### Domain generalization baseline (complete — mixed result)
+
+`--upweight-targets mars mercury moon venus --upweight-factor 2.0` via a
+`WeightedRandomSampler` in `create_dataloaders`/`train.py`. Compared
+against the unbalanced model's own 30-epoch checkpoint (not its extended
+50-epoch result, which would have been an unfair comparison).
+
+Result: oversampling weak targets is not a silver bullet. Moon improved
+substantially (PR-AUC 0.294→0.654, F1 0.577→0.826) and Mars improved
+slightly, but **Venus collapsed entirely** (F1 0.902→0.000), dragging
+every aggregate metric down (accuracy 87.14%→80.00%, F1 0.826→0.756).
+First implementation attempt was a pure inverse-target-count weighting,
+which is a near no-op on this dataset since all 8 targets have exactly
+10,000 missions each — caught via a standalone sampler test before
+wasting a full training run, fixed by adding explicit per-target weight
+overrides. Full numbers in `docs/PAPER_READY_SUMMARY.md` §6.
+
 ## Code/Branch State
 
 - GitHub branch pushed for teammate review:

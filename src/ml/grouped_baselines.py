@@ -13,7 +13,6 @@ from pathlib import Path
 
 import numpy as np
 import pyarrow.parquet as pq
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from sklearn.preprocessing import RobustScaler
 
 from src.ml.baselines import (
@@ -23,27 +22,19 @@ from src.ml.baselines import (
     extract_summary_features,
     majority_class_baseline,
 )
+from src.ml.calibration_utils import best_f1_threshold, metrics_block
 from src.ml.dataset import FEATURE_COLS
 
 
 def _metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray) -> dict:
-    return {
-        "acc": float(accuracy_score(y_true, y_pred)),
-        "f1": float(f1_score(y_true, y_pred, zero_division=0)),
-        "auc": float(roc_auc_score(y_true, y_prob)) if len(np.unique(y_true)) > 1 else 0.5,
-    }
+    """Backward-compatible thin wrapper — y_pred is unused, kept for call-site
+    compatibility; threshold is implied 0.5 to match prior behaviour, now also
+    carrying pr_auc/brier_score/ece/confusion_matrix via metrics_block."""
+    return metrics_block(y_true, y_prob, threshold=0.5)
 
 
 def _best_f1_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> tuple[float, float]:
-    thresholds = np.unique(np.quantile(y_prob, np.linspace(0.01, 0.99, 199)))
-    best_threshold = 0.5
-    best_f1 = -1.0
-    for threshold in thresholds:
-        score = f1_score(y_true, (y_prob > threshold).astype(int), zero_division=0)
-        if score > best_f1:
-            best_f1 = float(score)
-            best_threshold = float(threshold)
-    return best_threshold, best_f1
+    return best_f1_threshold(y_true, y_prob)
 
 
 def _process_group(rows: list, early_exit_frac: float, downsample_factor: int) -> dict:
@@ -143,13 +134,11 @@ def _xgboost(
     y_prob = clf.predict_proba(X_test_tab)[:, 1]
 
     threshold, train_f1 = _best_f1_threshold(y_train, train_prob)
-    y_pred = (y_prob > 0.5).astype(int)
-    tuned_pred = (y_prob > threshold).astype(int)
 
-    result = _metrics(y_test, y_pred, y_prob)
+    result = metrics_block(y_test, y_prob, threshold=0.5)
     result["train_tuned_threshold"] = threshold
     result["train_f1_at_threshold"] = train_f1
-    result["test_at_train_threshold"] = _metrics(y_test, tuned_pred, y_prob)
+    result["test_at_train_threshold"] = metrics_block(y_test, y_prob, threshold=threshold)
     result["test_probability_summary"] = {
         "min": float(np.min(y_prob)),
         "p25": float(np.quantile(y_prob, 0.25)),
@@ -199,7 +188,8 @@ def run(args: argparse.Namespace) -> list[dict]:
             else:
                 tuned = r["test_at_train_threshold"]
                 print(
-                    f"    @0.5 Acc={r['acc']:.2%} F1={r['f1']:.3f} AUC={r['auc']:.3f} | "
+                    f"    @0.5 Acc={r['acc']:.2%} F1={r['f1']:.3f} AUC={r['auc']:.3f} "
+                    f"PR-AUC={r['pr_auc']:.3f} Brier={r['brier_score']:.3f} ECE={r['ece']:.3f} | "
                     f"train-thr={r['train_tuned_threshold']:.4f} "
                     f"Acc={tuned['acc']:.2%} F1={tuned['f1']:.3f}"
                 )
