@@ -1,0 +1,3 @@
+*.ipynb linguist-detectable=false
+*.html linguist-vendored=true
+frontend/** linguist-vendored=true
