@@ -24,21 +24,14 @@ const FAILURES = [
 ]
 
 const PLANETS = [
-  {
-    name: 'EARTH → MOON',
-    stats: [['TOI burn', '3.240 km/s'], ['Propagation', '6 days'], ['Corridor', '100–500 km alt'], ['Status', 'PRIMARY TRAINED']],
-    statusColor: 'var(--green)',
-  },
-  {
-    name: 'EARTH → MARS',
-    stats: [['Transfer', 'Hohmann approx'], ['μ_ratio', '0.0000320'], ['SOI', '577,000 km'], ['Status', 'ZERO-SHOT TARGET']],
-    statusColor: 'var(--orange)',
-  },
-  {
-    name: 'EARTH → JUPITER',
-    stats: [['Transfer', 'Hohmann approx'], ['μ_ratio', '0.000955'], ['SOI', '48.2M km'], ['Status', 'FUTURE RESEARCH']],
-    statusColor: 'var(--text-dim)',
-  },
+  { name: 'EARTH → MOON',    stats: [['Missions', '10,000'], ['Transfer', '~6 days'],    ['LOTO AUC', '0.296'], ['Status', 'TRAINED']],   statusColor: 'var(--green)' },
+  { name: 'EARTH → MERCURY', stats: [['Missions', '10,000'], ['Transfer', 'Hohmann'],    ['LOTO AUC', '0.496'], ['Status', 'TRAINED']],   statusColor: 'var(--green)' },
+  { name: 'EARTH → VENUS',   stats: [['Missions', '10,000'], ['Transfer', 'Hohmann'],    ['LOTO AUC', '0.856'], ['Status', 'TRAINED']],   statusColor: 'var(--green)' },
+  { name: 'EARTH → MARS',    stats: [['Missions', '10,000'], ['μ_ratio', '0.0000320'],   ['LOTO AUC', '0.509'], ['Status', 'TRAINED']],   statusColor: 'var(--green)' },
+  { name: 'EARTH → JUPITER', stats: [['Missions', '10,000'], ['μ_ratio', '0.000955'],    ['LOTO AUC', '0.998'], ['Status', 'TRAINED']],   statusColor: 'var(--green)' },
+  { name: 'EARTH → SATURN',  stats: [['Missions', '10,000'], ['Transfer', '~6 yrs'],     ['LOTO AUC', '1.000'], ['Status', 'TRAINED']],   statusColor: 'var(--green)' },
+  { name: 'EARTH → URANUS',  stats: [['Missions', '10,000'], ['Transfer', '~16 yrs'],    ['LOTO AUC', '0.992'], ['Status', 'TRAINED']],   statusColor: 'var(--green)' },
+  { name: 'EARTH → NEPTUNE', stats: [['Missions', '10,000'], ['Transfer', '~37 yrs'],    ['LOTO AUC', '1.000'], ['Status', 'JIT GENERATED']], statusColor: 'var(--cyan)' },
 ]
 
 const ARCHS = [
@@ -98,10 +91,10 @@ export default function Dataset() {
       {/* Top stat tiles */}
       <div className="g4" style={{ marginBottom: '20px' }}>
         {[
-          { label: 'TOTAL MISSIONS',  value: '10', unit: 'K',      note: 'Monte Carlo dispersion',     bc: 'var(--cyan)',     nc: 'var(--green)' },
-          { label: 'TELEMETRY ROWS',  value: '85', unit: '.3M',    note: '↓ 15× downsampled (15-min)', bc: 'var(--cyan-dim)', nc: 'var(--green)' },
-          { label: 'SUCCESS RATE',    value: '35', unit: '.3%',    note: 'Stratified class balance',   bc: 'var(--orange)',   nc: 'var(--orange)' },
-          { label: 'STORAGE',         value: '13', unit: '.44 GB', note: 'Zstd + Snappy Parquet',      bc: 'var(--green)',    nc: 'var(--green)' },
+          { label: 'TOTAL MISSIONS',  value: '80', unit: 'K',     note: '8 planets × 10K each',      bc: 'var(--cyan)',     nc: 'var(--green)' },
+          { label: 'TELEMETRY ROWS',  value: '~850', unit: 'M',  note: '↓ 10× downsampled',          bc: 'var(--cyan-dim)', nc: 'var(--green)' },
+          { label: 'SUCCESS RATE',    value: '32', unit: '.0%',  note: 'Across all 8 targets',       bc: 'var(--orange)',   nc: 'var(--orange)' },
+          { label: 'STORAGE',         value: '~71', unit: ' GB', note: 'merged_all_v2 (Parquet)',     bc: 'var(--green)',    nc: 'var(--green)' },
         ].map(t => (
           <div key={t.label} className="tile" style={{ borderTopColor: t.bc }}>
             <div className="tile-label">{t.label}</div>
@@ -125,8 +118,8 @@ export default function Dataset() {
             ))}
           </div>
 
-          <div className="sec">MESH TOPOLOGY — PLANETARY TRANSFERS</div>
-          <div className="planet-grid">
+          <div className="sec">MESH TOPOLOGY — PLANETARY TRANSFERS (8 TARGETS)</div>
+          <div className="planet-grid" style={{ gridTemplateColumns: 'repeat(2,1fr)' }}>
             {PLANETS.map(p => (
               <div key={p.name} className="planet-card">
                 <div className="planet-name">{p.name}</div>

@@ -6,9 +6,10 @@ import Ablation from './panels/Ablation'
 import Dataset from './panels/Dataset'
 import Simulator from './panels/Simulator'
 import Experiments from './panels/Experiments'
+import Report from './panels/Report'
 
-const TABS = ['OVERVIEW', 'SIMULATOR', 'TRAINING', 'ABLATION', 'EXPERIMENTS', 'DATASET']
-const PANELS = { OVERVIEW: Overview, SIMULATOR: Simulator, TRAINING: Training, ABLATION: Ablation, EXPERIMENTS: Experiments, DATASET: Dataset }
+const TABS = ['REPORT', 'OVERVIEW', 'SIMULATOR', 'TRAINING', 'ABLATION', 'EXPERIMENTS', 'DATASET']
+const PANELS = { REPORT: Report, OVERVIEW: Overview, SIMULATOR: Simulator, TRAINING: Training, ABLATION: Ablation, EXPERIMENTS: Experiments, DATASET: Dataset }
 
 function Header({ onBack }) {
   return (
@@ -118,7 +119,7 @@ function TabBar({ active, setActive }) {
 
 export default function App() {
   const [showDashboard, setShowDashboard] = useState(false)
-  const [active, setActive] = useState('OVERVIEW')
+  const [active, setActive] = useState('REPORT')
   const Panel = PANELS[active]
 
   if (!showDashboard) {

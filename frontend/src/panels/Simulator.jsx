@@ -145,7 +145,7 @@ export default function Simulator() {
   const [apiOnline, setApiOnline] = useState(null)
   const [threshold, setThreshold]       = useState(0.5)
   const [minElapsed, setMinElapsed]     = useState(0.4)
-  const [dataPath, setDataPath]         = useState('data/merged/missions.parquet')
+  const [dataPath, setDataPath]         = useState('/media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet')
   const [n, setN]                 = useState(12)
   const [runningAll, setRunningAll] = useState(false)
   const [stats, setStats]         = useState({ pruned: 0, passed: 0, correct: 0, total: 0 })

@@ -278,9 +278,9 @@ export default function LandingPage({ onEnterDashboard }) {
   const features = [
     { Icon: Zap, title: 'Early Exit Prediction', desc: 'Classify mission success/failure using just 20–60% of trajectory telemetry — saving up to 80% of simulation compute.', color: '#e2e2e2', glow: 'rgba(226,226,226,0.25)' },
     { Icon: Globe2, title: '3-Body RK4 Physics', desc: 'Full N-body gravitational simulation covering Earth–Moon, Mars, and Jupiter transfers with 4th-order Runge-Kutta integration.', color: '#aaaaaa', glow: 'rgba(170,170,170,0.25)' },
-    { Icon: BrainCircuit, title: 'LSTM + Transformer', desc: 'Bidirectional LSTM and Transformer architectures trained on 85.3M trajectory rows across 10,000+ Monte Carlo missions.', color: '#888888', glow: 'rgba(136,136,136,0.25)' },
+    { Icon: BrainCircuit, title: 'LSTM + Transformer', desc: 'Bidirectional LSTM and Transformer architectures trained on 850M+ trajectory rows across 80,000 Monte Carlo missions (8 planets).', color: '#888888', glow: 'rgba(136,136,136,0.25)' },
     { Icon: Ruler, title: '13 Physics Features', desc: 'Synodic frame coordinates, specific orbital energy, eccentricity, flight path angle — invariant across planetary systems.', color: '#666666', glow: 'rgba(102,102,102,0.22)' },
-    { Icon: Target, title: 'AUC 0.87+ Accuracy', desc: 'State-of-the-art binary classification verified across ablation sweeps from 10% to 100% trajectory completeness.', color: '#e2e2e2', glow: 'rgba(226,226,226,0.25)' },
+    { Icon: Target, title: 'AUC 0.984 Accuracy', desc: 'Transformer calibrated to AUC 0.984, F1 0.921 after threshold tuning. XGBoost baseline hits F1 0.992 ± 0.001 (5-seed CI).', color: '#e2e2e2', glow: 'rgba(226,226,226,0.25)' },
     { Icon: Satellite, title: 'NASA GMAT Integration', desc: "Interfaces directly with NASA's General Mission Analysis Tool for seamless end-to-end prediction pipelines.", color: '#aaaaaa', glow: 'rgba(170,170,170,0.25)' },
   ]
 
@@ -331,8 +331,8 @@ export default function LandingPage({ onEnterDashboard }) {
             {/* Metric pills */}
             <div style={{ display: 'flex', gap: 0, marginBottom: 44, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden', width: 'fit-content' }}>
               {[
-                { val: '0.87+', label: 'AUC Score', color: '#e2e2e2' },
-                { val: '10K+', label: 'Missions', color: '#aaaaaa' },
+                { val: '0.984', label: 'AUC Score', color: '#e2e2e2' },
+                { val: '80K', label: 'Missions', color: '#aaaaaa' },
                 { val: '80%', label: 'Compute Saved', color: '#888888' },
               ].map(({ val, label, color }, i) => (
                 <div key={label} style={{ padding: '16px 28px', borderRight: i < 2 ? '1px solid rgba(255,255,255,0.08)' : 'none', background: 'rgba(255,255,255,0.025)' }}>
@@ -445,7 +445,7 @@ export default function LandingPage({ onEnterDashboard }) {
             {[
               { end: 10000, suffix: '+', label: 'Missions Simulated', sub: 'Monte Carlo RK4' },
               { end: 85.3, suffix: 'M', decimals: 1, label: 'Training Data Points', sub: 'Parquet compressed' },
-              { end: 0.87, suffix: ' AUC', decimals: 2, label: 'Peak Model Accuracy', sub: 'Binary classification' },
+              { end: 0.984, suffix: ' AUC', decimals: 3, label: 'Transformer (calibrated)', sub: 'Multi-planet, 80K missions' },
               { end: 80, suffix: '%', label: 'Compute Saved', sub: 'Early exit prediction' },
             ].map(({ end, suffix, prefix, decimals, label, sub }) => (
               <div key={label}>
