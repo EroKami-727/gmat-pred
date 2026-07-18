@@ -40,6 +40,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.ml.dataset import TrajectoryDataset, FEATURE_COLS
 from src.ml.model import TrajectoryLSTM, TrajectoryTransformer
+from src.ml.regime_router import RegimeRouter
+from src.api.trajectory_gen import generate_mission, hohmann_c3, optimal_phase_deg, PLANET_DATA
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -63,6 +65,20 @@ _log_queues: dict[str, list[str]] = {}
 
 # Thread pool for blocking inference
 _executor = ThreadPoolExecutor(max_workers=4)
+
+# Regime router (lazy-loaded, one instance)
+_router: RegimeRouter | None = None
+
+# In-memory store for user-generated missions (mission_id → trajectory/features dict)
+_gen_cache: dict[str, dict] = {}
+_gen_counter = 0
+
+
+def _load_router() -> RegimeRouter:
+    global _router
+    if _router is None:
+        _router = RegimeRouter(MODELS_DIR)
+    return _router
 
 # Regex to parse train.py epoch line:
 # Epoch 01 | Train Loss: 0.6234 (45.23%) | Val Loss: 0.5891 (51.12%) | F1=0.312 AUC=0.623 | lr=...
@@ -370,44 +386,235 @@ async def stop_training(job_id: str):
 # Simulator Endpoints
 # ═══════════════════════════════════════════════════════════════════════════
 
+@app.get("/api/simulator/router/status")
+async def router_status():
+    """Return which regime models are loaded and calibrated thresholds."""
+    return _load_router().status()
+
+
+@app.post("/api/simulator/router/reload")
+async def router_reload():
+    """Hot-reload regime models and thresholds after training completes."""
+    global _router
+    _router = None  # Force re-init on next request
+    status = _load_router().status()
+    return {"reloaded": True, **status}
+
+
+@app.get("/api/simulator/thresholds")
+async def get_thresholds():
+    """Return per-target calibrated P(fail) thresholds for the simulator UI."""
+    router = _load_router()
+    from src.ml.regime_router import INNER_PLANETS, OUTER_PLANETS, DEFAULT_THRESHOLD
+    all_targets = sorted(INNER_PLANETS | OUTER_PLANETS)
+    return {
+        target: router.threshold_for(target)
+        for target in all_targets
+    }
+
+
 @app.get("/api/simulator/missions")
 async def sample_missions(
     data: str = Query("data/merged/missions.parquet"),
     n: int = Query(12),
     seed: int = Query(42),
+    target: str = Query("ALL"),
 ):
-    """Return N random mission IDs and their true labels from the dataset."""
+    """
+    Return N random mission IDs and their true labels from the dataset.
+    Streams in small batches and stops early — never reads the whole file into RAM.
+    """
     data_path = Path(data)
     if not data_path.exists():
         return JSONResponse(status_code=404, content={"error": f"Dataset not found: {data}"})
 
     def _load():
         import pyarrow.parquet as pq
+        import pyarrow.compute as pc
+        import pyarrow as pa
         pf = pq.ParquetFile(data_path)
-        cols = ["mission_id", "label", "failure_type"]
+        cols = ["mission_id", "label", "failure_type", "target_body"]
         available = [c for c in cols if c in pf.schema_arrow.names]
-        tbl = pf.read(columns=available)
-        df = tbl.to_pandas()
-        summary = df.groupby("mission_id").first().reset_index()
-        rng = np.random.default_rng(seed)
-        sample = summary.sample(min(n, len(summary)), random_state=int(rng.integers(0, 9999)))
-        return [
-            {
-                "mission_id": int(row["mission_id"]),
-                "label": int(row["label"]) if "label" in row else None,
-                "failure_type": str(row["failure_type"]) if "failure_type" in row else "unknown",
-            }
-            for _, row in sample.iterrows()
-        ]
+
+        want_target = target.lower() if target != "ALL" else None
+        seen: dict[int, dict] = {}
+        stop_at = n * 20   # collect this many unique missions then stop
+
+        for batch in pf.iter_batches(batch_size=100_000, columns=available):
+            if want_target:
+                mask    = pc.equal(pc.utf8_lower(batch.column("target_body")),
+                                   pa.scalar(want_target))
+                batch   = batch.filter(mask)
+            if batch.num_rows == 0:
+                continue
+            df = batch.to_pandas()
+            for mid, grp in df.groupby("mission_id", sort=False):
+                mid = int(mid)
+                if mid not in seen:
+                    row = grp.iloc[0]
+                    seen[mid] = {
+                        "mission_id":   mid,
+                        "label":        int(row["label"])         if "label"        in row.index else None,
+                        "failure_type": str(row["failure_type"])  if "failure_type" in row.index else "unknown",
+                        "target":       str(row["target_body"])   if "target_body"  in row.index else "unknown",
+                    }
+            if len(seen) >= stop_at:
+                break
+
+        missions = list(seen.values())
+        rng    = np.random.default_rng(seed)
+        idx    = rng.choice(len(missions), min(n, len(missions)), replace=False)
+        return [missions[i] for i in idx]
 
     loop = asyncio.get_event_loop()
     missions = await loop.run_in_executor(_executor, _load)
     return {"missions": missions}
 
 
+@app.get("/api/simulator/planet_info")
+async def planet_info():
+    """Return planet parameters for the mission creator UI."""
+    out = {}
+    for name, data in PLANET_DATA.items():
+        out[name] = {
+            "a_au":             data["a_au"],
+            "hohmann_c3":       hohmann_c3(name),
+            "optimal_phase_deg": optimal_phase_deg(name),
+            "soi_km":           data["soi_km"],
+        }
+    return out
+
+
+@app.post("/api/simulator/generate")
+async def generate_mission_endpoint(body: dict):
+    """
+    Generate a synthetic interplanetary trajectory from user parameters.
+    Returns a mission_id (prefixed "gen_") that trajectory/stream endpoints accept.
+    """
+    global _gen_counter
+    target          = str(body.get("target", "mars")).lower()
+    c3              = float(body.get("c3", 10.0))
+    phase_ahead_deg = body.get("phase_ahead_deg", None)
+    earth_phase_deg = float(body.get("earth_phase_deg", 0.0))
+
+    def _gen():
+        return generate_mission(target, c3,
+                                phase_ahead_deg=phase_ahead_deg,
+                                earth_phase_deg=earth_phase_deg)
+
+    loop   = asyncio.get_event_loop()
+    result = await loop.run_in_executor(_executor, _gen)
+
+    _gen_counter += 1
+    mission_id = f"gen_{_gen_counter}"
+    _gen_cache[mission_id] = result
+    result_out = {k: v for k, v in result.items() if k != "features"}
+    result_out["mission_id"] = mission_id
+    return result_out
+
+
+@app.get("/api/simulator/trajectory")
+async def get_trajectory(
+    mission_id: str = Query(...),
+    data: str = Query("data/merged/missions.parquet"),
+    downsample: int = Query(2),
+):
+    """
+    Return pre-loaded trajectory positions and telemetry for orbital map visualization.
+    Positions are in the synodic frame (rel_x, rel_y relative to target at origin).
+    """
+    # Serve from in-memory cache for generated missions
+    if isinstance(mission_id, str) and mission_id.startswith("gen_"):
+        cached = _gen_cache.get(mission_id)
+        if cached is None:
+            return JSONResponse(status_code=404, content={"error": f"Generated mission {mission_id} not found"})
+        return {
+            "mission_id":   mission_id,
+            "total_steps":  cached["total_steps"],
+            "label":        cached["label"],
+            "failure_type": cached["failure_type"],
+            "target_body":  cached["target_body"],
+            "positions":    cached["positions"],
+            "telemetry":    cached["telemetry"],
+        }
+
+    mid_int   = int(mission_id)
+    data_path = Path(data)
+    if not data_path.exists():
+        return JSONResponse(status_code=404, content={"error": f"Dataset not found: {data}"})
+
+    def _load():
+        import pyarrow.dataset as ds_arrow
+        import pandas as pd
+        wanted = [
+            "mission_id", "elapsed_secs", "label", "failure_type", "target_body",
+            "rel_x", "rel_y", "rel_z",
+            "vel_mag", "ecc", "spec_energy", "earth_rmag", "fpa_deg", "norm_target_dist",
+        ]
+        dataset   = ds_arrow.dataset(str(data_path), format="parquet")
+        available = [c for c in wanted if c in dataset.schema.names]
+        tbl = dataset.to_table(
+            filter=ds_arrow.field("mission_id") == mid_int,
+            columns=available,
+        )
+        if tbl.num_rows == 0:
+            return None
+        mdf = tbl.to_pandas().sort_values("elapsed_secs").reset_index(drop=True)
+        mdf = mdf.iloc[::downsample].reset_index(drop=True)
+        total = len(mdf)
+
+        def safe(row, col, dec=4):
+            v = row.get(col, 0.0)
+            try:
+                return round(float(v), dec)
+            except Exception:
+                return 0.0
+
+        positions, telemetry = [], []
+        for i in range(total):
+            row = mdf.iloc[i]
+            ep = round((i + 1) / total, 5)
+            positions.append({
+                "step": i,
+                "elapsed_pct": ep,
+                "rel_x": safe(row, "rel_x", 2),
+                "rel_y": safe(row, "rel_y", 2),
+            })
+            telemetry.append({
+                "step": i,
+                "elapsed_pct": ep,
+                "vel_mag":         safe(row, "vel_mag",         3),
+                "ecc":             safe(row, "ecc",             5),
+                "spec_energy":     safe(row, "spec_energy",     2),
+                "earth_rmag":      safe(row, "earth_rmag",      1),
+                "fpa_deg":         safe(row, "fpa_deg",         4),
+                "norm_target_dist":safe(row, "norm_target_dist",5),
+            })
+
+        label = int(mdf["label"].iloc[0]) if "label" in mdf.columns else None
+        failure_type = str(mdf["failure_type"].iloc[0]) if "failure_type" in mdf.columns else "unknown"
+        target_body = str(mdf["target_body"].iloc[0]) if "target_body" in mdf.columns else "unknown"
+
+        return {
+            "mission_id": mission_id,
+            "total_steps": total,
+            "label": label,
+            "failure_type": failure_type,
+            "target_body": target_body,
+            "positions": positions,
+            "telemetry": telemetry,
+        }
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(_executor, _load)
+    if result is None:
+        return JSONResponse(status_code=404, content={"error": f"Mission {mission_id} not found"})
+    return result
+
+
 @app.get("/api/simulator/stream")
 async def simulator_stream(
-    mission_id: int = Query(...),
+    mission_id: str = Query(...),
     data: str = Query("data/merged/missions.parquet"),
     step_delay_ms: int = Query(80),
     threshold: float = Query(0.5),
@@ -420,59 +627,59 @@ async def simulator_stream(
       {"type": "cancel", "timestep": N, "elapsed_pct": 0.40, "probability": 0.87}
       {"type": "done",   "true_label": 0, "final_prob": 0.91, "was_correct": true}
     """
-    cache = _load_model_cached()
-    if not cache:
+    router = _load_router()
+    if not router.is_available():
         async def _no_model():
             yield f"data: {json.dumps({'type': 'error', 'text': 'No trained model found. Train a model first.'})}\n\n"
         return StreamingResponse(_no_model(), media_type="text/event-stream")
 
-    data_path = Path(data)
-    if not data_path.exists():
-        async def _no_data():
-            yield f"data: {json.dumps({'type': 'error', 'text': f'Dataset not found: {data}'})}\n\n"
-        return StreamingResponse(_no_data(), media_type="text/event-stream")
-
-    def _load_mission():
-        import pyarrow.parquet as pq
-        import pandas as pd
-        pf = pq.ParquetFile(data_path)
-        needed = list(set(FEATURE_COLS + ["mission_id", "label", "failure_type", "elapsed_secs"]))
-        needed = [c for c in needed if c in pf.schema_arrow.names]
-        frames = []
-        for batch in pf.iter_batches(batch_size=500_000, columns=needed):
-            df = batch.to_pandas()
-            chunk = df[df["mission_id"] == mission_id]
-            if len(chunk):
-                frames.append(chunk)
-        if not frames:
-            return None, None, None
-        mission_df = pd.concat(frames).sort_values("elapsed_secs").reset_index(drop=True)
-        # Downsample (factor 15)
-        mission_df = mission_df.iloc[::15].reset_index(drop=True)
-        features = mission_df[FEATURE_COLS].values.astype(np.float32)
-        label = int(mission_df["label"].iloc[0])
-        failure_type = str(mission_df.get("failure_type", pd.Series(["unknown"])).iloc[0])
-        return features, label, failure_type
-
-    model = cache["model"]
-    scaler = cache["scaler"]
-    device = cache["device"]
-    arch = cache["arch"]
-
-    def _infer_step(features_so_far: np.ndarray) -> float:
-        scaled = scaler.transform(features_so_far)
-        x = torch.tensor(scaled, dtype=torch.float32).unsqueeze(0).to(device)
-        lengths = torch.tensor([len(features_so_far)], dtype=torch.long)
-        with torch.no_grad():
-            if arch == "transformer":
-                mask = torch.zeros(1, len(features_so_far), dtype=torch.bool, device=device)
-                logit = model(x, mask)
-            else:
-                logit = model(x, lengths)
-        return float(torch.sigmoid(logit).item())
-
+    # loop must be in scope for the generate() closure regardless of which branch we take
     loop = asyncio.get_event_loop()
-    features, true_label, failure_type = await loop.run_in_executor(_executor, _load_mission)
+
+    # ── Load features: generated mission (from cache) or parquet ──────────
+    if mission_id.startswith("gen_"):
+        cached = _gen_cache.get(mission_id)
+        if cached is None:
+            async def _no_gen():
+                yield f"data: {json.dumps({'type': 'error', 'text': f'Generated mission {mission_id} not found'})}\n\n"
+            return StreamingResponse(_no_gen(), media_type="text/event-stream")
+        features     = cached["features"]
+        true_label   = cached["label"]
+        failure_type = cached["failure_type"]
+        target_body  = cached["target_body"]
+    else:
+        mid_int   = int(mission_id)
+        data_path = Path(data)
+        if not data_path.exists():
+            async def _no_data():
+                yield f"data: {json.dumps({'type': 'error', 'text': f'Dataset not found: {data}'})}\n\n"
+            return StreamingResponse(_no_data(), media_type="text/event-stream")
+
+        def _load_mission():
+            import pyarrow.dataset as ds_arrow
+            import pandas as pd
+            from src.ml.regime_router import OUTER_PLANETS
+            needed = list(set(FEATURE_COLS + ["mission_id", "label", "failure_type", "elapsed_secs", "target_body"]))
+            dataset = ds_arrow.dataset(str(data_path), format="parquet")
+            schema_names = dataset.schema.names
+            needed = [c for c in needed if c in schema_names]
+            tbl = dataset.to_table(
+                filter=ds_arrow.field("mission_id") == mid_int,
+                columns=needed,
+            )
+            if tbl.num_rows == 0:
+                return None, None, None, None
+            mission_df   = tbl.to_pandas().sort_values("elapsed_secs").reset_index(drop=True)
+            target_body  = str(mission_df["target_body"].iloc[0]).lower() if "target_body" in mission_df.columns else "unknown"
+            # Match the downsample factor the regime model was trained with
+            ds = 50 if target_body in OUTER_PLANETS else 15
+            mission_df   = mission_df.iloc[::ds].reset_index(drop=True)
+            feats        = mission_df[FEATURE_COLS].values.astype(np.float32)
+            label        = int(mission_df["label"].iloc[0])
+            failure_type = str(mission_df["failure_type"].iloc[0]) if "failure_type" in mission_df.columns else "unknown"
+            return feats, label, failure_type, target_body
+
+        features, true_label, failure_type, target_body = await loop.run_in_executor(_executor, _load_mission)
 
     if features is None:
         async def _not_found():
@@ -482,23 +689,28 @@ async def simulator_stream(
     delay_s = step_delay_ms / 1000.0
     total_steps = len(features)
 
+    # Use calibrated per-target threshold; fall back to user-supplied value
+    cal_threshold = router.threshold_for(target_body) if target_body else threshold
+    effective_threshold = cal_threshold
+
     # Emit info header
     header = {"type": "info", "total_steps": total_steps, "true_label": true_label,
-               "failure_type": failure_type, "mission_id": mission_id}
+               "failure_type": failure_type, "mission_id": mission_id, "target_body": target_body,
+               "regime": router.regime_for(target_body),
+               "calibrated_threshold": round(effective_threshold, 4)}
 
     async def generate():
         yield f"data: {json.dumps(header)}\n\n"
 
         canceled = False
         final_prob = 0.0
-        # Stream every 5th step for speed, always include last
-        stride = max(1, total_steps // 60)
+        stride = max(1, total_steps // 150)
 
         for i in range(0, total_steps):
             if i % stride != 0 and i != total_steps - 1:
                 continue
 
-            prob = 1.0 - await loop.run_in_executor(_executor, _infer_step, features[:i + 1])  # model outputs P(success); invert to P(fail)
+            prob = await loop.run_in_executor(_executor, router.infer_step, features[:i + 1], target_body)
             elapsed_pct = round((i + 1) / total_steps, 4)
             final_prob = prob
 
@@ -507,11 +719,12 @@ async def simulator_stream(
             yield f"data: {json.dumps(event)}\n\n"
             await asyncio.sleep(delay_s)
 
-            # Early-exit cancellation — only after model has seen enough data to be reliable
-            if prob >= threshold and not canceled and elapsed_pct >= min_elapsed_pct:
+            # Early-exit cancellation using calibrated per-target threshold
+            if prob >= effective_threshold and not canceled and elapsed_pct >= min_elapsed_pct:
                 canceled = True
                 cancel_event = {"type": "cancel", "timestep": i + 1,
-                                "elapsed_pct": elapsed_pct, "probability": round(prob, 4)}
+                                "elapsed_pct": elapsed_pct, "probability": round(prob, 4),
+                                "threshold_used": round(effective_threshold, 4)}
                 yield f"data: {json.dumps(cancel_event)}\n\n"
                 break
 

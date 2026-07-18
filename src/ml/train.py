@@ -180,6 +180,9 @@ def main():
     parser.add_argument("--epoch-offset", type=int, default=0,
                         help="Epoch number to start counting from when resuming, so "
                              "metrics history/logs reflect true cumulative epoch count.")
+    parser.add_argument("--planet-filter", type=str, nargs="+", default=None,
+                        help="Restrict training to these target bodies only, e.g. "
+                             "--planet-filter Mercury Venus Mars. Enables regime-specific models.")
     args = parser.parse_args()
 
     # ── GPU Detection ──
@@ -207,6 +210,7 @@ def main():
         seed=args.seed,
         balance_targets=args.balance_targets or bool(target_weight_overrides),
         target_weight_overrides=target_weight_overrides,
+        target_filter=args.planet_filter,
     )
 
     # 2. Initialize Model — pull input_dim dynamically from dataset

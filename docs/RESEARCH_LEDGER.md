@@ -157,6 +157,114 @@ which is a near no-op on this dataset since all 8 targets have exactly
 wasting a full training run, fixed by adding explicit per-target weight
 overrides. Full numbers in `docs/PAPER_READY_SUMMARY.md` §6.
 
+## Regime-Split Production Models (2026-07-18)
+
+### Motivation
+
+The single multi-planet Transformer showed AUC 0.984 on random splits but the
+LOTO audit revealed it completely fails on unseen targets (Mercury, Mars, Moon
+AUC ≈ 0.5 — worse than random). The root cause identified in the error analysis:
+`dist_ratio`, `earth_rmag`, and `norm_target_dist` shift by 10–43 standard
+deviations between inner and outer planets. A single model cannot handle both
+physical regimes.
+
+### Architecture
+
+Two specialist Transformers, same hyperparams (d_model=128, nhead=8, 4 Pre-LN
+layers, CLS token, early-exit=0.4), different downsample factors to match the
+raw data cadence per regime:
+
+| Regime | Planets | ds | Model path |
+|--------|---------|---|---|
+| Inner | Mercury, Venus, Mars | 15 | `models/inner_production/` |
+| Outer | Jupiter, Saturn, Uranus, Neptune | 50 | `models/outer_production/` |
+
+Pre-downsampling for outer planets was done first to avoid writing ~43 GB of
+temp files to the NTFS FUSE mount during training (`src/data_collection/presample.py`).
+
+### Training results
+
+Inner (Mercury/Venus/Mars, ds=15):
+- Accuracy: ~98%, F1: 0.990, AUC: 0.997
+
+Outer (Jupiter/Saturn/Uranus/Neptune, ds=50, trained on `data/outer_ds50.parquet`):
+- Accuracy: ~99%, F1: 0.990, AUC: 0.996
+
+### RegimeRouter
+
+`src/ml/regime_router.py` — loads both models at startup, selects the correct
+one at inference time based on target body name, and applies the per-target
+calibrated threshold. Falls back to inner model if target is unrecognised.
+
+### Calibration bug found and fixed (2026-07-18)
+
+The initial calibration used `f1_score(labels, preds, zero_division=0)` with
+default `pos_label=1` (success). This optimises for predicting *successes*
+correctly, not failures — so the optimal strategy is a threshold above any
+P(fail) the model actually outputs, meaning the abort system never fires.
+
+**Fix applied to `src/ml/per_target_calibration.py`:**
+- Changed to `pos_label=0` to optimise failure-class F1
+- Sweep now starts from 0.005 (was 0.02) for finer granularity near zero
+- AUC was also computed inverted (passed P(fail) as score for positive class);
+  fixed to negate probs: `roc_auc_score(labels, [-p for p in probs])`
+- `load_missions` now uses per-regime downsample automatically (ds=15 inner,
+  ds=50 outer) — the old `--downsample` CLI arg is removed since it was a
+  single value applied to all targets
+
+**Action required:** re-run calibration after this fix to update
+`models/thresholds.json`:
+
+```bash
+/home/haise/Coding/venvs/gmat-pred/bin/python3 -m src.ml.per_target_calibration \
+  --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet \
+  --models-dir models \
+  --early-exit 0.4 \
+  --output models/thresholds.json
+```
+
+The thresholds currently in `models/thresholds.json` were computed with the
+wrong metric and should not be trusted for abort decisions until re-calibration
+completes.
+
+## Live Simulator (2026-07-18)
+
+### Physics trajectory generator (`src/api/trajectory_gen.py`)
+
+Two-body solar gravity RK4 propagator with circular planetary orbits. Given a
+target planet, launch energy (C3 in km²/s²), and departure phase angle, it
+computes a complete synthetic interplanetary trajectory and extracts all 13
+training features at each timestep. Feature normalization matches the training
+schema exactly:
+- `norm_target_dist = dist / SOI` (not initial dist)
+- `soi_ratio = SOI / dist`
+- `dist_ratio = dist / AU`
+
+`hohmann_c3(target)` and `optimal_phase_deg(target)` expose the minimum-energy
+Hohmann transfer parameters for each planet. The success criterion is
+`dist_to_target < 1.5 × SOI`.
+
+### Stream endpoint changes
+
+- `step_delay_ms` hardcoded to 10 ms server-side; playback speed is
+  frontend-controlled via the buffered playback system
+- ML inference stride: `total_steps // 150` (was `// 60`) — 2.5× more inference
+  calls emitted per mission for smoother spacecraft animation
+- Calibrated threshold applied automatically; sent in SSE `info` header as
+  `calibrated_threshold`
+
+### Simulator frontend (`frontend/src/panels/Simulator.jsx`)
+
+- Buffered SSE playback: all steps stream into `bufferRef` at server speed;
+  `playTimerRef` drives display at user-selected rate
+- Speed controls: 4×/2×/1×/½×/¼×/STEP frame-by-frame
+- Pause/Resume during active stream
+- Orbital map hover-scrub (after completion only — disabled during live playback
+  to prevent position interference)
+- Abort detail row: shows elapsed %, P(fail) at abort, calibrated threshold used,
+  and excess above threshold
+- Regime and calibrated threshold displayed in probability panel during stream
+
 ## Code/Branch State
 
 - GitHub branch pushed for teammate review:

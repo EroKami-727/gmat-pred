@@ -155,6 +155,46 @@ We completed 8 evaluations that weren't in the original codebase:
 
 ---
 
+## OrbitGuard Live Simulator
+
+The dashboard includes a real-time mission simulator that runs the ML model live on trajectory data. Key features:
+
+- **Mission queue**: load N random missions from the dataset (with planet filter), or create synthetic ones
+- **Mission creator**: define target, launch energy (C3), and phase angle; the physics engine propagates a two-body RK4 trajectory and feeds it to the ML in real time
+- **Buffered playback**: SSE streams all ML steps at full speed; the client plays them back at 4×/2×/1×/½×/¼× or frame-by-frame (STEP mode)
+- **Orbital map**: synodic-frame trajectory visualisation; hover after completion to scrub through telemetry at any point
+- **Abort details**: when the model fires, shows the calibrated threshold, P(fail) at abort, and elapsed % alongside a CORRECT/FALSE-POSITIVE verdict
+
+### Regime-split model architecture
+
+A single global model fails on this dataset because inner and outer planets occupy categorically different physical regimes (`dist_ratio`, `earth_rmag` shift by 10–43 σ). The production system uses two specialist Transformers:
+
+| Regime | Targets | Downsample | F1 | AUC |
+|--------|---------|-----------|-----|-----|
+| Inner | Mercury, Venus, Mars | 15 | 0.990 | 0.997 |
+| Outer | Jupiter, Saturn, Uranus, Neptune | 50 | 0.990 | 0.996 |
+
+Each model uses the same architecture (d_model=128, nhead=8, 4 Pre-LN Transformer layers, CLS token). The `RegimeRouter` (`src/ml/regime_router.py`) selects the right model and calibrated threshold at inference time.
+
+### Calibrated thresholds
+
+After training, `src/ml/per_target_calibration.py` sweeps P(fail) thresholds per planet and picks the one that maximises **failure-class F1** (`pos_label=0`). Results live in `models/thresholds.json` and are applied automatically in the stream endpoint.
+
+To re-run calibration after model updates:
+
+```bash
+VENV=/home/haise/Coding/venvs/gmat-pred/bin/python3
+DATA=/media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet
+
+$VENV -m src.ml.per_target_calibration \
+  --data $DATA \
+  --models-dir models \
+  --early-exit 0.4 \
+  --output models/thresholds.json
+```
+
+---
+
 ## Quick Start
 
 ```bash
@@ -170,10 +210,54 @@ cd frontend && npm run dev
 
 ---
 
-## Train a Model
+## Train Regime Models
 
 ```bash
-# Multi-planet Transformer — 40% early exit, 50 epochs
+VENV=/home/haise/Coding/venvs/gmat-pred/bin/python3
+DATA=/media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet
+
+# Step 1 — Pre-downsample outer planets (avoids 43 GB NTFS temp writes during training)
+$VENV -m src.data_collection.presample \
+  --data $DATA \
+  --planets Jupiter Saturn Uranus Neptune \
+  --downsample 50 \
+  --out data/outer_ds50.parquet
+
+# Step 2a — Train inner planet model (Mercury/Venus/Mars)
+$VENV -m src.ml.train \
+  --data $DATA \
+  --planet-filter mercury venus mars \
+  --model transformer \
+  --epochs 50 \
+  --early-exit 0.4 \
+  --downsample-factor 15 \
+  --seed 42 \
+  --output-dir models/inner_production
+
+# Step 2b — Train outer planet model (Jupiter/Saturn/Uranus/Neptune)
+$VENV -m src.ml.train \
+  --data data/outer_ds50.parquet \
+  --planet-filter jupiter saturn uranus neptune \
+  --model transformer \
+  --epochs 50 \
+  --early-exit 0.4 \
+  --downsample-factor 1 \
+  --seed 42 \
+  --output-dir models/outer_production
+
+# Step 3 — Calibrate per-target thresholds (failure-class F1, pos_label=0)
+$VENV -m src.ml.per_target_calibration \
+  --data $DATA \
+  --models-dir models \
+  --early-exit 0.4 \
+  --output models/thresholds.json
+```
+
+---
+
+## Train a Multi-planet Baseline Model (paper experiments only)
+
+```bash
 python3 -m src.ml.train \
   --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet \
   --model transformer \
@@ -182,18 +266,6 @@ python3 -m src.ml.train \
   --downsample-factor 10 \
   --seed 42 \
   --output-dir models/transformer_multiplanet
-
-# Continue from checkpoint
-python3 -m src.ml.train \
-  --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet \
-  --model transformer \
-  --epochs 70 \
-  --early-exit 0.4 \
-  --downsample-factor 10 \
-  --seed 42 \
-  --output-dir models/transformer_multiplanet \
-  --resume-from models/transformer_multiplanet/checkpoint_best.pt \
-  --epoch-offset 50
 ```
 
 ---

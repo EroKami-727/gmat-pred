@@ -147,18 +147,18 @@ class TrajectoryDataset(Dataset):
         current_mission_rows = []
         
         print(f"  [Loading {pf.metadata.num_rows:,} rows via streaming batches...]")
-        
+
         # Iterate in batches to save RAM
         for batch in pf.iter_batches(batch_size=500000, columns=needed_cols):
             # Using categories for string columns to save RAM
             df = batch.to_pandas(categories=["failure_type"])
-            
+
             for mid, group in df.groupby("mission_id", sort=False):
                 if mid != current_mission_id:
                     # Process completed mission
                     if current_mission_rows:
                         self._process_mission(pd.concat(current_mission_rows), current_mission_id)
-                    
+
                     current_mission_id = mid
                     current_mission_rows = [group]
                 else:
@@ -281,6 +281,7 @@ def create_dataloaders(
     num_workers: int = 0,
     balance_targets: bool = False,
     target_weight_overrides: Optional[dict[str, float]] = None,
+    target_filter: Optional[list[str]] = None,
 ) -> Tuple[DataLoader, DataLoader, DataLoader, RobustScaler]:
     """
     Create train / val / test DataLoaders from a Parquet database.
@@ -313,8 +314,14 @@ def create_dataloaders(
     # ── Memory-Safe ID Extraction ──
     import pyarrow.parquet as pq
     pf = pq.ParquetFile(parquet_path)
-    # Just read mission_id column
-    mission_ids = pf.read(columns=["mission_id"])["mission_id"].unique().to_numpy().copy()
+    if target_filter:
+        id_tbl = pf.read(columns=["mission_id", "target_body"])
+        id_df = id_tbl.to_pandas()
+        lower_filter = {t.lower() for t in target_filter}
+        mission_ids = id_df.loc[id_df["target_body"].str.lower().isin(lower_filter), "mission_id"].unique().copy()
+        print(f"  Target filter    : {target_filter} → {len(mission_ids)} missions")
+    else:
+        mission_ids = pf.read(columns=["mission_id"])["mission_id"].unique().to_numpy().copy()
 
     rng = np.random.default_rng(seed)
     rng.shuffle(mission_ids)
