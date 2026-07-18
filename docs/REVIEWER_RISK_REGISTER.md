@@ -116,3 +116,5 @@ Mitigation:
 - "OrbitGuard generalizes robustly to unseen planets."
 - "The model is ready for operational mission cancellation."
 - "Interplanetary telemetry is sampled every 15 minutes."
+
+Need to make sure of these
