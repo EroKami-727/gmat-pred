@@ -1,0 +1,19 @@
+{
+  "window": 32,
+  "auc": 0.9997,
+  "operating_frac": 0.4,
+  "per_mode_recall_at_0.5": {
+    "surface_impact": {
+      "n": 6,
+      "recall": 0.8333
+    },
+    "orbit_too_high": {
+      "n": 792,
+      "recall": 0.9987
+    },
+    "missed_target": {
+      "n": 329,
+      "recall": 1.0
+    }
+  }
+}

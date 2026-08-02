@@ -1,0 +1,85 @@
+{
+  "planet": "moon",
+  "n_missions": 10000,
+  "seq_len": 102,
+  "n_features": 13,
+  "feature_cols": [
+    "rel_x",
+    "rel_y",
+    "rel_z",
+    "spec_energy",
+    "fpa_deg",
+    "norm_target_dist",
+    "radial_vel",
+    "vel_mag",
+    "earth_rmag",
+    "ecc",
+    "mu_ratio",
+    "soi_ratio",
+    "dist_ratio"
+  ],
+  "downsample": 85,
+  "target_steps": 100,
+  "operating_frac": 0.4,
+  "threshold": 0.775,
+  "best_epoch": 47,
+  "best_val_auc": 0.9996,
+  "test": {
+    "0.10": {
+      "auc": 0.9994,
+      "f1_fail": 0.9919,
+      "mode_acc": 0.9867,
+      "mode_acc_on_failures": 0.996,
+      "p_fail_spread": 0.999966
+    },
+    "0.20": {
+      "auc": 0.9998,
+      "f1_fail": 0.9945,
+      "mode_acc": 0.9893,
+      "mode_acc_on_failures": 0.997,
+      "p_fail_spread": 0.999969
+    },
+    "0.30": {
+      "auc": 0.9998,
+      "f1_fail": 0.995,
+      "mode_acc": 0.9907,
+      "mode_acc_on_failures": 0.998,
+      "p_fail_spread": 0.999969
+    },
+    "0.40": {
+      "auc": 0.9997,
+      "f1_fail": 0.995,
+      "mode_acc": 0.9907,
+      "mode_acc_on_failures": 0.997,
+      "p_fail_spread": 0.999971
+    }
+  },
+  "test_at_operating_point": {
+    "recall": 0.997,
+    "precision": 0.991,
+    "f1": 0.994,
+    "tp": 986,
+    "fp": 9,
+    "fn": 3,
+    "tn": 502
+  },
+  "mode_alpha": 0.5,
+  "failure_classes": {
+    "0": "success",
+    "1": "surface_impact",
+    "2": "orbit_too_high",
+    "3": "missed_target",
+    "4": "source_impact",
+    "5": "hyperbolic_flyby",
+    "6": "degenerate_orbit",
+    "7": "unknown"
+  },
+  "aux_dim": 8,
+  "threshold_selection": "plateau midpoint of failure-class F1 on val",
+  "recalibrated_test": {
+    "recall": 0.9925,
+    "precision": 0.9851,
+    "f1": 0.9888,
+    "auc": 0.9994
+  }
+}

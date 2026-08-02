@@ -469,3 +469,162 @@ celebrating it.
 
 When a model underperforms a simpler baseline, report that honestly and adjust
 the contribution framing.
+
+## Per-Planet Model Rebuild (2026-08-02)
+
+### Symptom
+
+The regime-split production models (`models/inner_production`,
+`models/outer_production`) failed to catch failures in the live simulator
+despite reporting val AUC 0.955 (inner) and 0.997 (outer) during training.
+Measured on real missions through the serving path:
+
+| Planet  | AUC  | P(fail) spread across missions |
+|---------|------|--------------------------------|
+| Venus   | ~0.5 | 2.4e-7 — constant 0.020910     |
+| Mars    | 0.61 | 0.047                          |
+| Jupiter | 0.87 | 0.99                           |
+
+### Root cause
+
+The regime models fitted **one scaler across 3–4 planets**. That scaler's IQR
+spans the cross-planet range (`spec_energy` IQR = 23.6 covering Mercury through
+Mars), so within-planet mission-to-mission variation was compressed to ~1e-5 of
+the input range — below what gradient descent can learn to amplify, and Pre-LN
+LayerNorm removes what survives. The network converged to a per-planet constant.
+
+The high training AUC was measuring **cross-planet** ranking (the model learned
+"Venus scores 0.02, Mars 0.11, Mercury 0.19"), not within-planet discrimination,
+so a mixed validation set looked healthy.
+
+This went undetected for a long time because **XGBoost baselines were
+unaffected**: trees split on absolute feature values and need no amplification.
+On the identical data and identical scaler, XGBoost scored AUC 1.0000 (Jupiter),
+0.9999 (Venus), 0.9997 (Mercury), 0.9991 (Mars). The baselines were reporting
+that the task was solved while the deployed model could not do it at all.
+
+Two hypotheses were tested and **rejected**:
+- *Padded vs unpadded inference mismatch* — outputs are byte-identical.
+- *float32 precision loss* — global RobustScaler in float32 preserves XGBoost
+  AUC 1.0. An earlier claim that scaled features were bit-identical was an
+  artifact of `np.round(..., 4)` in a debug print.
+
+### Fix
+
+1. **One model per planet** — the scaler sees a single planet, so within-planet
+   spread occupies the full dynamic range.
+2. **Per-timestep z-scoring** — each feature standardised against its
+   distribution at that timestep index across missions. Controlled experiment,
+   same architecture and seed, only normalisation differing:
+
+   | Planet  | global RobustScaler | per-timestep z |
+   |---------|--------------------|----------------|
+   | Venus   | 0.9978 | 0.9987 |
+   | Mars    | 0.9386 | **0.9976** |
+   | Mercury | 0.9944 | 0.9995 |
+   | Jupiter | 1.0000 | 1.0000 |
+
+3. **Random-prefix training** — prefix fraction sampled per batch, so the model
+   is in-distribution at any streaming position rather than only at the 40%
+   horizon. (The old stream called inference all the way to 100%, far outside
+   its training window, which drove every outer-planet mission to a false abort
+   near 70%.)
+4. **Dual head** — outcome plus failure mode from a shared trunk.
+5. **Threshold = plateau midpoint** of failure-class F1 on validation, instead
+   of the first maximum, which parked Mercury at 0.010 (the sweep's lower bound).
+
+### Result (1,200 held-out missions per planet, 40% observed)
+
+Overall recall 0.9955, precision 0.9965, F1 0.9960, failure-mode accuracy
+0.9792. Per-planet F1 ranges 0.9912 (Venus) to 1.0000 (Saturn, Neptune).
+Accuracy is flat from 10% to 40% observed, indicating the outcome is largely
+determined by injection conditions.
+
+### Open items
+
+- **Near-nominal grazing cluster.** Each planet's dataset begins with targeter
+  nominal seeds whose closest approach forms a tight spike (Jupiter
+  `min_target_rmag` 71,993–72,003 km). Recall there is 0.067 for Uranus (119
+  missions) and 0.90 for Mercury (163); other planets are unaffected. This is
+  the dominant residual error and pulls full-population Uranus recall to 0.9832.
+  These trajectories are indistinguishable from precise targeted transfers over
+  the observed window and only fail at arrival — a genuine information limit at
+  40%, not obviously a modelling defect.
+- **Synthetic missions are out-of-distribution.** `src/api/trajectory_gen.py`
+  uses heliocentric two-body physics; training data is GMAT-derived with an
+  Earth-centric departure, so `spec_energy`/`ecc`/`earth_rmag` reference a
+  different body (Venus: +9.10 vs −514.9). Two context features (`soi_ratio`,
+  `dist_ratio`) were also being recomputed per timestep instead of held constant
+  — fixed. The remaining reference-frame mismatch is not fixed; the router now
+  flags |z| far outside the training range and withholds the abort instead of
+  emitting a confident wrong verdict. Scoring generated missions properly
+  requires modelling the LEO departure and hyperbolic escape.
+- `src/ml/regime_router.py` and `src/ml/per_target_calibration.py` are
+  superseded by `planet_router.py` and `recalibrate.py`. Kept for provenance of
+  the earlier results; no longer imported by the API.
+
+## Corrections and Final State (2026-08-02, later)
+
+### Data-alignment defect (invalidated two earlier analyses)
+
+`missions.parquet` is **not** sorted by `mission_id`, and `summary.parquet` is
+not either. The per-planet `.npz` extracts store missions in *file* order. Any
+join by row position therefore pairs unrelated missions.
+
+Two analyses were wrong because of this and have been redone:
+
+1. The "near-nominal grazing cluster" finding — that Uranus recall was 0.067 on
+   a cluster of 119 missions selected by `min_target_rmag`, and that the first
+   240 missions per planet were an unrepresentative pool. The *selection* was
+   built from a positional join and did not identify the missions it claimed.
+2. `prune_economics.py` — `load()` concatenated params and summary by row
+   position. Its first results (T0 saving 67.7% at 5.9% false-prune, Uranus T0
+   false-prune 31.2%) were artifacts. The Uranus 31.2% figure had been used to
+   argue that the cascade was necessary; it is actually 0.0%.
+
+Fix: `src/data_collection/recover_mission_ids.py` attaches a `mission_ids` array
+to every extract, and joins are now on the key with `validate="one_to_one"` and
+an assertion on labels.
+
+### Uranus rare-mode blind spot: real, and fixed
+
+With correct labels the blind spot survives, but it is a *failure-mode* problem,
+not a `min_target_rmag` cluster: Uranus `surface_impact` (119 of 6,611 failures)
+had sequence recall **0.000**, while every other planet handles that mode at
+0.95–1.00.
+
+It is not an information limit. XGBoost on the identical per-timestep
+z-normalised 40% window separates Uranus surface_impact from success at
+**AUC 1.000**. Mode-balanced resampling up to 45x (`mode_alpha` 0 / 0.5 / 1.0)
+left recall at exactly 0.000, so the sequence model cannot reach a signal that is
+demonstrably present in its own input — an optimisation limit.
+
+Resolved by fusing a per-planet tree assist at the decision window
+(`src/ml/train_assist.py`): Uranus surface_impact 0.000 → 1.000, overall
+held-out F1 0.9960 → **0.9981**, recall **0.9991** (5 false negatives in 8,400).
+
+### Does the sequence model earn its place? No, on this dataset
+
+| Screen | Compute saved | Good missions destroyed |
+|--------|---------------|-------------------------|
+| T0 (launch params, before propagating) | 64.6% | 0.8% |
+| T40 (telemetry Transformer) | 38.9% | 0.2% |
+| Cascade | 65.5% | 1.3% |
+
+T0 reaches AUC 0.9975–1.0000 and predicts the failure mode at 0.96–0.99 — equal
+to the sequence model on both tasks, at zero propagation cost. The cascade buys
+0.9 pp of savings for 0.5 pp more false prunes and is not worth its complexity.
+
+The reason is structural: the simulator is deterministic, so outcome is a fixed
+function of the six injection offsets and the trajectory is their integral. It
+cannot carry information the parameters do not already have. Logistic regression
+scores AUC 0.49 (chance), so the map is strongly nonlinear — this is a case for
+ML, but not for a sequence model.
+
+**Implication for the paper.** The "early trajectory prediction saves compute"
+framing is not defensible on this dataset. Two claims are defensible: the
+normalisation-collapse methodology finding, and a quantified pruning result whose
+honest conclusion is that input-space screening dominates. Making the sequential
+framing viable requires data where the outcome is *not* determined at t=0
+(mid-flight perturbations, unmodelled dynamics, or sensor noise) — new data
+generation, not new modelling.

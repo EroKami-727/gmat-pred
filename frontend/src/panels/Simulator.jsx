@@ -20,16 +20,18 @@ const PLANET_COLORS = {
   Venus:   '#ffdd66', Moon:   '#cccccc',
 }
 
-// Minimum Hohmann C3 per planet (km²/s²) — used to guide the slider
-const HOHMANN_C3 = {
-  mercury: 57.0, venus: 6.2, mars: 8.7,
-  jupiter: 78.0, saturn: 105.0, uranus: 129.0, neptune: 145.0,
+// Plain-language meaning of each failure mode, for the prune explanation.
+const MODE_DESC = {
+  surface_impact:  'trajectory intersects the target body — the spacecraft hits the surface',
+  orbit_too_high:  'arrival energy too high — the spacecraft is not captured into the intended orbit',
+  missed_target:   'closest approach falls outside the sphere of influence — the target is missed entirely',
+  source_impact:   'trajectory falls back and re-impacts the departure body',
+  hyperbolic_flyby:'excess hyperbolic energy — the spacecraft escapes past the target',
+  degenerate_orbit:'resulting orbit is degenerate / unphysical',
+  success:         'nominal transfer',
+  unknown:         'mode not classified',
 }
-// C3 slider max per planet
-const C3_MAX = {
-  mercury: 130, venus: 30, mars: 40,
-  jupiter: 160, saturn: 180, uranus: 200, neptune: 220,
-}
+
 const GEN_PLANETS = ['mars', 'venus', 'mercury', 'jupiter', 'saturn', 'uranus', 'neptune']
 
 const INIT_STREAM = {
@@ -47,7 +49,14 @@ const INIT_STREAM = {
   trueLabel:         null,
   finalProb:         null,
   calThreshold:      null,    // calibrated threshold from backend info header
-  regime:            null,
+  regime:            null,    // target body name (per-planet model in use)
+  modelAvail:        true,    // false when no trained model exists for the target
+  predMode:          null,    // predicted failure mode (how it would fail)
+  modeConf:          null,
+  actualFailureType: null,
+  modeCorrect:       null,
+  ood:               false,   // input far outside the training distribution
+  oodFraction:       0,
   canceledInBuffer:  false,   // whether the buffer contains a cancel event
   cancelBufIdx:      null,    // buffer index of the cancel event
 }
@@ -94,7 +103,7 @@ function fmtVal(v, dec = 3) {
 
 // ── OrbitalMap ────────────────────────────────────────────────────────────────
 
-function OrbitalMap({ positions, currentIdx, abortIdx, isLoading, targetName, onScrub }) {
+function OrbitalMap({ positions, currentIdx, abortIdx, isLoading, targetName, onScrub, operatingFrac = 0.4 }) {
   const W = 300, H = 300
   const svgRef = useRef(null)
 
@@ -146,12 +155,54 @@ function OrbitalMap({ positions, currentIdx, abortIdx, isLoading, targetName, on
     onScrub(best)
   }, [pts, onScrub])
 
-  const { fullD, liveD } = useMemo(() => {
-    if (!pts?.length) return { fullD: '', liveD: '' }
-    const mk = (arr) => arr.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')
-    const end = Math.max(1, Math.min(currentIdx + 1, pts.length))
-    return { fullD: mk(pts), liveD: mk(pts.slice(0, end)) }
-  }, [pts, currentIdx])
+  const mkPath = (arr) =>
+    arr.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')
+
+  const { fullD, liveD, observedD, futureD, decisionIdx, closestIdx, arrows, scale } = useMemo(() => {
+    if (!pts?.length) return { fullD: '', liveD: '', observedD: '', futureD: '', decisionIdx: 0, closestIdx: 0, arrows: [], scale: null }
+    const end   = Math.max(1, Math.min(currentIdx + 1, pts.length))
+    const dIdx  = Math.max(1, Math.min(Math.round(operatingFrac * (pts.length - 1)), pts.length - 1))
+
+    // Closest approach to the target — the moment that decides the outcome.
+    let closest = 0, best = Infinity
+    positions.forEach((p, i) => {
+      const d = p.rel_x * p.rel_x + p.rel_y * p.rel_y
+      if (d < best) { best = d; closest = i }
+    })
+
+    // Direction chevrons spaced along the path so travel direction is readable.
+    const arr = []
+    const stepN = Math.max(6, Math.floor(pts.length / 7))
+    for (let i = stepN; i < pts.length - 1; i += stepN) {
+      const [x1, y1] = pts[i - 1], [x2, y2] = pts[i]
+      const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
+      arr.push({ x: x2, y: y2, ang, past: i <= dIdx })
+    }
+
+    // Scale bar: a round number of km mapped to screen units.
+    let sc = null
+    if (positions.length > 1) {
+      const [ax, ay] = pts[0]
+      const kmPerPx = Math.hypot(positions[0].rel_x - positions[1].rel_x,
+                                 positions[0].rel_y - positions[1].rel_y) /
+                      (Math.hypot(ax - pts[1][0], ay - pts[1][1]) || 1)
+      if (isFinite(kmPerPx) && kmPerPx > 0) {
+        const targetPx = W * 0.22
+        const raw = kmPerPx * targetPx
+        const pow = Math.pow(10, Math.floor(Math.log10(raw)))
+        const nice = [1, 2, 5, 10].map(m => m * pow).find(v => v >= raw * 0.6) ?? pow
+        sc = { px: nice / kmPerPx, km: nice }
+      }
+    }
+
+    return {
+      fullD: mkPath(pts),
+      liveD: mkPath(pts.slice(0, end)),
+      observedD: mkPath(pts.slice(0, dIdx + 1)),
+      futureD: mkPath(pts.slice(dIdx)),
+      decisionIdx: dIdx, closestIdx: closest, arrows: arr, scale: sc,
+    }
+  }, [pts, currentIdx, positions, operatingFrac])
 
   if (isLoading) {
     return (
@@ -196,29 +247,79 @@ function OrbitalMap({ positions, currentIdx, abortIdx, isLoading, targetName, on
       <circle cx={tx} cy={ty} r={corridorR * 2.2}
         fill="none" stroke="#1a1a1a" strokeWidth={0.5} strokeDasharray="2 8" opacity={0.5} />
 
-      {/* Full trajectory path (dim) */}
-      <path d={fullD} fill="none" stroke="#252525" strokeWidth={1.5} strokeLinecap="round" />
+      {/* Trajectory beyond the decision point — the model never sees this.
+          Dashed so it reads as "what would have happened", not as evidence. */}
+      <path d={futureD} fill="none" stroke="#2b2b2b" strokeWidth={1.4}
+        strokeDasharray="3 4" strokeLinecap="round" />
+
+      {/* Observed window (0 → decision point) */}
+      <path d={observedD} fill="none" stroke="#3d3d3d" strokeWidth={2} strokeLinecap="round" />
 
       {/* Live traversed path */}
       {currentIdx > 0 && (
-        <path d={liveD} fill="none" stroke="var(--cyan)" strokeWidth={1.5}
-          opacity={0.75} strokeLinecap="round" />
+        <path d={liveD} fill="none" stroke="var(--cyan)" strokeWidth={2.2}
+          opacity={0.9} strokeLinecap="round" />
       )}
 
-      {/* Target body at (0,0) */}
-      <circle cx={tx} cy={ty} r={8}  fill={`${pColor}18`} stroke={pColor} strokeWidth={1.5} />
-      <circle cx={tx} cy={ty} r={3}  fill={pColor} />
-      <text x={tx + 13} y={ty - 7} fill={pColor} fontSize="8"
-        fontFamily="Share Tech Mono, monospace" letterSpacing="0.08em" opacity={0.9}>
+      {/* Travel-direction chevrons */}
+      {arrows.map((a, i) => (
+        <path key={i} d="M-3.5,-2.6 L0,0 L-3.5,2.6"
+          transform={`translate(${a.x.toFixed(1)},${a.y.toFixed(1)}) rotate(${a.ang.toFixed(1)})`}
+          fill="none" stroke={a.past ? '#5a5a5a' : '#333'} strokeWidth={1.1}
+          strokeLinecap="round" strokeLinejoin="round" />
+      ))}
+
+      {/* Decision point — where the abort call is made */}
+      {pts[decisionIdx] && (
+        <>
+          <line x1={pts[decisionIdx][0]} y1={pts[decisionIdx][1] - 9}
+                x2={pts[decisionIdx][0]} y2={pts[decisionIdx][1] + 9}
+                stroke="#ffaa00" strokeWidth={1.2} opacity={0.85} />
+          <text x={pts[decisionIdx][0] + 5} y={pts[decisionIdx][1] - 11}
+            fill="#ffaa00" fontSize="7" fontFamily="Share Tech Mono, monospace"
+            letterSpacing="0.06em" opacity={0.9}>
+            DECIDE {Math.round(operatingFrac * 100)}%
+          </text>
+        </>
+      )}
+
+      {/* Closest approach — what actually determines the outcome */}
+      {pts[closestIdx] && closestIdx !== 0 && (
+        <>
+          <circle cx={pts[closestIdx][0]} cy={pts[closestIdx][1]} r={3.2}
+            fill="none" stroke={pColor} strokeWidth={1} opacity={0.8} />
+          <text x={pts[closestIdx][0] + 6} y={pts[closestIdx][1] + 10}
+            fill={`${pColor}bb`} fontSize="7" fontFamily="Share Tech Mono, monospace"
+            letterSpacing="0.06em">
+            CLOSEST
+          </text>
+        </>
+      )}
+
+      {/* Target body at (0,0) — filled disc so it reads as a body, not a ring */}
+      <circle cx={tx} cy={ty} r={corridorR} fill="none" stroke={pColor}
+        strokeWidth={0.8} strokeDasharray="3 4" opacity={0.55} />
+      <circle cx={tx} cy={ty} r={7} fill={pColor} opacity={0.28} />
+      <circle cx={tx} cy={ty} r={4.5} fill={pColor} />
+      <text x={tx + 12} y={ty - 8} fill={pColor} fontSize="9"
+        fontFamily="Share Tech Mono, monospace" letterSpacing="0.1em">
         {(targetName || 'TARGET').toUpperCase()}
       </text>
-
-      {/* Source body (starting position) */}
-      <circle cx={sx} cy={sy} r={5}  fill="none" stroke="#484848" strokeWidth={1} />
-      <circle cx={sx} cy={sy} r={2}  fill="#484848" />
-      <text x={sx + 8} y={sy - 5} fill="#484848" fontSize="8"
+      <text x={tx + 12} y={ty + 1} fill={`${pColor}77`} fontSize="6.5"
         fontFamily="Share Tech Mono, monospace" letterSpacing="0.06em">
-        SOURCE
+        SOI
+      </text>
+
+      {/* Departure body — distinct hue so it is never confused with the s/c */}
+      <circle cx={sx} cy={sy} r={5.5} fill="#3d6fd9" opacity={0.30} />
+      <circle cx={sx} cy={sy} r={3} fill="#5b87e8" />
+      <text x={sx + 9} y={sy - 6} fill="#5b87e8" fontSize="8"
+        fontFamily="Share Tech Mono, monospace" letterSpacing="0.08em">
+        EARTH
+      </text>
+      <text x={sx + 9} y={sy + 3} fill="#5b87e877" fontSize="6.5"
+        fontFamily="Share Tech Mono, monospace" letterSpacing="0.06em">
+        DEPART
       </text>
 
       {/* Abort marker */}
@@ -240,20 +341,47 @@ function OrbitalMap({ positions, currentIdx, abortIdx, isLoading, targetName, on
         </>
       )}
 
-      {/* Spacecraft dot */}
-      <circle cx={dx} cy={dy} r={5}  fill="white" />
-      <circle cx={dx} cy={dy} r={12} fill="none" stroke="white" strokeWidth={0.5} opacity={0.2} />
-      <circle cx={dx} cy={dy} r={19} fill="none" stroke="white" strokeWidth={0.3} opacity={0.10} />
+      {/* Spacecraft — a chevron on the path, not another circle */}
+      <circle cx={dx} cy={dy} r={13} fill="none" stroke="#fff" strokeWidth={0.5} opacity={0.18} />
+      <circle cx={dx} cy={dy} r={7}  fill="#0a0a0a" stroke="#fff" strokeWidth={1.4} />
+      <circle cx={dx} cy={dy} r={2.4} fill="#fff" />
+      <text x={dx + 14} y={dy + 3} fill="#fff" fontSize="8"
+        fontFamily="Share Tech Mono, monospace" letterSpacing="0.1em" opacity={0.95}>
+        S/C
+      </text>
 
-      {/* Corner labels */}
-      <text x={8} y={14} fill="#252525" fontSize="8"
+      {/* Scale bar */}
+      {scale && (
+        <g transform={`translate(${W - scale.px - 14}, ${H - 20})`}>
+          <line x1={0} y1={0} x2={scale.px} y2={0} stroke="#5a5a5a" strokeWidth={1} />
+          <line x1={0} y1={-3} x2={0} y2={3} stroke="#5a5a5a" strokeWidth={1} />
+          <line x1={scale.px} y1={-3} x2={scale.px} y2={3} stroke="#5a5a5a" strokeWidth={1} />
+          <text x={scale.px / 2} y={-5} fill="#6a6a6a" fontSize="7" textAnchor="middle"
+            fontFamily="Share Tech Mono, monospace" letterSpacing="0.06em">
+            {scale.km >= 1e6 ? `${(scale.km / 1e6).toFixed(scale.km >= 1e7 ? 0 : 1)}M km`
+              : scale.km >= 1e3 ? `${(scale.km / 1e3).toFixed(0)}k km`
+              : `${scale.km.toFixed(0)} km`}
+          </text>
+        </g>
+      )}
+
+      {/* Header + legend */}
+      <text x={8} y={14} fill="#3a3a3a" fontSize="8"
         fontFamily="Share Tech Mono, monospace" letterSpacing="0.08em">
-        [ SYNODIC FRAME — TARGET-CENTRIC / km ]
+        [ SYNODIC FRAME — TARGET AT ORIGIN ]
       </text>
-      <text x={8} y={H - 8} fill="#252525" fontSize="8"
-        fontFamily="Share Tech Mono, monospace" letterSpacing="0.06em">
-        ○ SPACECRAFT  ◎ TARGET  ● SOURCE
-      </text>
+      <g transform={`translate(8, ${H - 8})`} fontFamily="Share Tech Mono, monospace" fontSize="7">
+        <circle cx={3} cy={-3} r={2.6} fill="#0a0a0a" stroke="#fff" strokeWidth={1} />
+        <text x={9} y={-1} fill="#8a8a8a" letterSpacing="0.06em">S/C</text>
+        <circle cx={32} cy={-3} r={3} fill={pColor} />
+        <text x={38} y={-1} fill="#8a8a8a" letterSpacing="0.06em">TARGET</text>
+        <circle cx={78} cy={-3} r={3} fill="#5b87e8" />
+        <text x={84} y={-1} fill="#8a8a8a" letterSpacing="0.06em">EARTH</text>
+        <line x1={116} y1={-3} x2={128} y2={-3} stroke="var(--cyan)" strokeWidth={2} />
+        <text x={132} y={-1} fill="#8a8a8a" letterSpacing="0.06em">FLOWN</text>
+        <line x1={168} y1={-3} x2={180} y2={-3} stroke="#2b2b2b" strokeWidth={1.4} strokeDasharray="3 3" />
+        <text x={184} y={-1} fill="#8a8a8a" letterSpacing="0.06em">UNSEEN BY ML</text>
+      </g>
     </svg>
   )
 }
@@ -378,7 +506,9 @@ function MissionItem({ mission, status, isActive, onClick }) {
           {mission.generated
             ? <span style={{ fontSize: '8px', color: 'var(--cyan)', border: '1px solid var(--cyan)44', padding: '1px 3px' }}>GEN</span>
             : null}
-          {mission.generated ? `${mission.target?.toUpperCase()} C3=${mission.c3?.toFixed(1)}` : `#${mission.mission_id}`}
+          {mission.generated
+            ? `${mission.target?.toUpperCase()} ${mission.dvSigma != null ? `${mission.dvSigma >= 0 ? '+' : ''}${mission.dvSigma.toFixed(2)}σ` : 'CUSTOM'}`
+            : `#${mission.mission_id}`}
         </div>
         <div style={{ fontSize: '9px', color: '#555', fontFamily: 'var(--mono)', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {mission.label === 1 ? 'NOM' : mission.label === 0 ? 'FAIL' : '?'} · {mission.failure_type || '—'}
@@ -399,7 +529,9 @@ function MissionItem({ mission, status, isActive, onClick }) {
 
 // ── Verdict banner ────────────────────────────────────────────────────────────
 
-function VerdictBanner({ status, wasCorrect, trueLabel, finalProb, abortPct, abortProb, abortThreshold }) {
+function VerdictBanner({ status, wasCorrect, trueLabel, finalProb, abortPct, abortProb, abortThreshold,
+                         predMode, actualFailureType, modeCorrect, ood, oodFraction,
+                         targetBody, totalSteps }) {
   if (status !== 'canceled' && status !== 'completed') return null
   const isAbort = status === 'canceled'
   const col = wasCorrect
@@ -476,57 +608,146 @@ function VerdictBanner({ status, wasCorrect, trueLabel, finalProb, abortPct, abo
           )}
         </div>
       )}
+
+      {/* Predicted failure mode — what the model expects to go wrong */}
+      {predMode && (
+        <div style={{
+          padding: '7px 20px', background: '#0a0a0a',
+          borderLeft: `4px solid ${col}`, border: '1px solid #1a1a1a', borderTop: 'none',
+          display: 'flex', gap: '32px', alignItems: 'center', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: '9px', color: '#444', fontFamily: 'var(--mono)', letterSpacing: '0.08em' }}>
+            FAILURE MODE
+          </span>
+          <span style={{ fontSize: '9px', fontFamily: 'var(--mono)', color: '#888' }}>
+            PREDICTED: <span style={{ color: 'var(--orange)' }}>{String(predMode).toUpperCase()}</span>
+          </span>
+          {actualFailureType && (
+            <span style={{ fontSize: '9px', fontFamily: 'var(--mono)', color: '#888' }}>
+              ACTUAL: <span style={{ color: trueLabel === 1 ? 'var(--green)' : 'var(--red)' }}>
+                {String(actualFailureType).toUpperCase()}
+              </span>
+            </span>
+          )}
+          {modeCorrect != null && (
+            <span style={{ fontSize: '9px', fontFamily: 'var(--mono)',
+                           color: modeCorrect ? 'var(--green)' : 'var(--red)' }}>
+              {modeCorrect ? '✓ MODE CORRECT' : '✗ MODE WRONG'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Why this mission was pruned — stated in full, not just as numbers */}
+      {isAbort && abortPct != null && (
+        <div style={{
+          padding: '10px 20px 11px', background: '#0d0708',
+          borderLeft: `4px solid ${col}`, border: '1px solid #1f1416', borderTop: 'none',
+        }}>
+          <div style={{ fontSize: '9px', color: '#664', fontFamily: 'var(--mono)',
+                        letterSpacing: '0.1em', marginBottom: '6px', color: '#7a5560' }}>
+            WHY THIS RUN WAS PRUNED
+          </div>
+          <div style={{ fontSize: '10.5px', color: '#b9b9b9', fontFamily: 'var(--mono)', lineHeight: 1.75 }}>
+            After observing <span style={{ color: 'var(--cyan)' }}>{(abortPct * 100).toFixed(1)}%</span>
+            {' '}of the trajectory
+            {totalSteps ? <> (<span style={{ color: 'var(--cyan)' }}>
+              {Math.round(abortPct * totalSteps)}</span> of {totalSteps} steps)</> : null}
+            {targetBody ? <> for the <span style={{ color: '#ddd' }}>{targetBody.toUpperCase()}</span> transfer</> : null},
+            {' '}the model put failure probability at{' '}
+            <span style={{ color: 'var(--red)' }}>{abortProb?.toFixed(4)}</span>, which is{' '}
+            <span style={{ color: 'var(--orange)' }}>
+              {abortThreshold != null ? `${((abortProb - abortThreshold) >= 0 ? '+' : '')}${(abortProb - abortThreshold).toFixed(4)}` : '—'}
+            </span>{' '}past this planet's calibrated abort threshold of{' '}
+            <span style={{ color: '#aaa' }}>{abortThreshold?.toFixed(4)}</span>.
+            {predMode && MODE_DESC[predMode] && (
+              <> The expected failure is{' '}
+                <span style={{ color: 'var(--orange)' }}>{predMode.toUpperCase().replace(/_/g, ' ')}</span>
+                {' '}— {MODE_DESC[predMode]}.</>
+            )}
+          </div>
+          <div style={{ marginTop: '7px', fontSize: '10px', fontFamily: 'var(--mono)',
+                        color: wasCorrect ? 'var(--green)' : 'var(--red)', lineHeight: 1.6 }}>
+            {wasCorrect
+              ? <>✓ CORRECT — this mission does fail{actualFailureType && actualFailureType !== 'success'
+                  ? ` (${actualFailureType.replace(/_/g, ' ')})` : ''}. Stopping here saves the remaining{' '}
+                  <span style={{ color: 'var(--green)' }}>{((1 - abortPct) * 100).toFixed(0)}%</span> of propagation.</>
+              : <>✗ FALSE PRUNE — this mission would have SUCCEEDED. A good run was discarded;
+                  this is the expensive error class.</>}
+          </div>
+        </div>
+      )}
+
+      {/* Out-of-distribution advisory */}
+      {ood && (
+        <div style={{
+          padding: '7px 20px', background: '#140d00',
+          borderLeft: '4px solid var(--orange)', border: '1px solid #2a1d00', borderTop: 'none',
+          display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: '9px', color: 'var(--orange)', fontFamily: 'var(--mono)', letterSpacing: '0.08em' }}>
+            ⚠ OUT OF DISTRIBUTION
+          </span>
+          <span style={{ fontSize: '9px', fontFamily: 'var(--mono)', color: '#997744' }}>
+            {(oodFraction * 100).toFixed(0)}% OF INPUTS BEYOND TRAINING RANGE — TREAT THIS VERDICT AS LOW CONFIDENCE
+          </span>
+        </div>
+      )}
     </div>
   )
 }
 
 // ── Create Mission Form ───────────────────────────────────────────────────────
 
-function CreateMissionForm({ onGenerate, onClose, disabled }) {
-  const [target,       setTarget]       = useState('mars')
-  const [c3,           setC3]           = useState(HOHMANN_C3['mars'])
-  const [phaseAhead,   setPhaseAhead]   = useState(null)   // null = auto (Hohmann optimal)
-  const [earthPhase,   setEarthPhase]   = useState(0)
-  const [generating,   setGenerating]   = useState(false)
-  const [useAutoPhase, setUseAutoPhase] = useState(true)
+// Missions are defined the way the dataset defines them: a Hohmann nominal
+// burn plus an execution error. The error is entered in sigma units of the
+// dispersion the dataset actually sampled (Venus dv_V sigma = 0.003 km/s), so
+// 0 is a textbook transfer and +-2 sigma is already a failure.
+function CreateMissionForm({ onGenerate, onClose, disabled, planetInfo }) {
+  const [target,     setTarget]     = useState('mars')
+  const [dvSigma,    setDvSigma]    = useState(0)
+  const [aopOff,     setAopOff]     = useState(0)
+  const [incOff,     setIncOff]     = useState(0)
+  const [generating, setGenerating] = useState(false)
+  const [genError,   setGenError]   = useState(null)
+  const [showAdv,    setShowAdv]    = useState(false)
 
-  const minC3  = HOHMANN_C3[target] ?? 8
-  const maxC3  = C3_MAX[target] ?? 100
-  const pColor = PLANET_COLORS[target.charAt(0).toUpperCase() + target.slice(1)] || 'var(--cyan)'
+  const info    = planetInfo?.[target] || {}
+  const sigmaDv = info.sigma?.dv_V ?? 0.003
+  const nominal = info.nominal?.TOI_V
+  const trained = info.model_trained !== false
+  const pColor  = PLANET_COLORS[target.charAt(0).toUpperCase() + target.slice(1)] || 'var(--cyan)'
+
+  const dvKms = dvSigma * sigmaDv
 
   const handleTargetChange = (t) => {
-    setTarget(t)
-    setC3(HOHMANN_C3[t] ?? 8)
-    setUseAutoPhase(true)
-    setPhaseAhead(null)
+    setTarget(t); setDvSigma(0); setAopOff(0); setIncOff(0); setGenError(null)
   }
 
   const handleSubmit = async () => {
-    setGenerating(true)
+    setGenerating(true); setGenError(null)
     try {
       const body = {
         target,
-        c3: parseFloat(c3),
-        earth_phase_deg: parseFloat(earthPhase),
-        phase_ahead_deg: useAutoPhase ? null : parseFloat(phaseAhead ?? 0),
+        dv_v_offset: dvKms,
+        aop_offset:  parseFloat(aopOff) || 0,
+        inc_offset:  parseFloat(incOff) || 0,
       }
       const r = await fetch(`${API}/api/simulator/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!r.ok) throw new Error(await r.text())
       const data = await r.json()
-      onGenerate(data)
+      if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`)
+      onGenerate({ ...data, dv_sigma: dvSigma })
     } catch (e) {
       console.error('Generate mission:', e)
+      setGenError(String(e.message || e))
     } finally {
       setGenerating(false)
     }
   }
-
-  const pct = Math.min(100, Math.max(0, ((c3 - 0) / (maxC3 - 0)) * 100))
-  const minPct = Math.min(100, (minC3 / maxC3) * 100)
 
   return (
     <div style={{
@@ -546,57 +767,53 @@ function CreateMissionForm({ onGenerate, onClose, disabled }) {
           </select>
         </div>
 
-        {/* C3 */}
-        <div style={{ minWidth: '200px', flex: 1 }}>
+        {/* TOI burn execution error */}
+        <div style={{ minWidth: '240px', flex: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <div style={labelStyle}>LAUNCH ENERGY C3  (km²/s²)</div>
+            <div style={labelStyle}>TOI BURN ERROR  (σ)</div>
             <div style={{ fontSize: '9px', color: '#555', fontFamily: 'var(--mono)' }}>
-              MIN HOHMANN: {minC3}
+              1σ = {sigmaDv.toFixed(4)} km/s
             </div>
           </div>
           <div style={{ position: 'relative' }}>
-            <input type="range" min={0} max={maxC3} step={0.5}
-              value={c3} onChange={e => setC3(parseFloat(e.target.value))}
+            <input type="range" min={-6} max={6} step={0.25}
+              value={dvSigma} onChange={e => setDvSigma(parseFloat(e.target.value))}
               style={{ width: '100%', accentColor: pColor }} />
-            {/* Min-C3 tick */}
+            {/* nominal tick at 0 sigma */}
             <div style={{
               position: 'absolute', top: '-2px', bottom: '-2px',
-              left: `${minPct}%`, width: '2px',
-              background: `${pColor}88`,
+              left: '50%', width: '2px', background: `${pColor}88`,
               pointerEvents: 'none',
             }} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
-            <span style={{ fontSize: '9px', color: '#333', fontFamily: 'var(--mono)' }}>0</span>
-            <span style={{ fontSize: '11px', color: pColor, fontFamily: 'var(--mono)' }}>{c3.toFixed(1)}</span>
-            <span style={{ fontSize: '9px', color: '#333', fontFamily: 'var(--mono)' }}>{maxC3}</span>
+            <span style={{ fontSize: '9px', color: '#333', fontFamily: 'var(--mono)' }}>−6σ</span>
+            <span style={{ fontSize: '11px', color: pColor, fontFamily: 'var(--mono)' }}>
+              {dvSigma >= 0 ? '+' : ''}{dvSigma.toFixed(2)}σ = {dvKms >= 0 ? '+' : ''}{dvKms.toFixed(5)} km/s
+            </span>
+            <span style={{ fontSize: '9px', color: '#333', fontFamily: 'var(--mono)' }}>+6σ</span>
           </div>
         </div>
 
-        {/* Phase angle */}
+        {/* Advanced orientation offsets */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <div style={labelStyle}>PLANET PHASE AHEAD (deg)</div>
+            <div style={labelStyle}>ORIENTATION</div>
             <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-              <input type="checkbox" checked={useAutoPhase}
-                onChange={e => { setUseAutoPhase(e.target.checked); if (e.target.checked) setPhaseAhead(null) }}
+              <input type="checkbox" checked={showAdv}
+                onChange={e => setShowAdv(e.target.checked)}
                 style={{ accentColor: pColor }} />
-              <span style={{ fontSize: '9px', color: '#555', fontFamily: 'var(--mono)' }}>AUTO</span>
+              <span style={{ fontSize: '9px', color: '#555', fontFamily: 'var(--mono)' }}>EDIT</span>
             </label>
           </div>
-          <input className="field-input" style={{ width: '80px' }}
-            type="number" min={-180} max={180} step={1}
-            disabled={useAutoPhase}
-            value={useAutoPhase ? '(HOHMANN)' : (phaseAhead ?? 0)}
-            onChange={e => { setUseAutoPhase(false); setPhaseAhead(parseFloat(e.target.value)) }} />
-        </div>
-
-        {/* Earth departure angle */}
-        <div>
-          <div style={labelStyle}>EARTH PHASE (deg)</div>
-          <input className="field-input" style={{ width: '70px' }}
-            type="number" min={0} max={360} step={5}
-            value={earthPhase} onChange={e => setEarthPhase(parseInt(e.target.value) || 0)} />
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <input className="field-input" style={{ width: '68px' }} title="AOP offset (deg)"
+              type="number" step={0.05} disabled={!showAdv}
+              value={aopOff} onChange={e => setAopOff(parseFloat(e.target.value) || 0)} />
+            <input className="field-input" style={{ width: '68px' }} title="Inclination offset (deg)"
+              type="number" step={0.05} disabled={!showAdv}
+              value={incOff} onChange={e => setIncOff(parseFloat(e.target.value) || 0)} />
+          </div>
         </div>
 
         {/* Actions */}
@@ -614,14 +831,22 @@ function CreateMissionForm({ onGenerate, onClose, disabled }) {
         </div>
       </div>
 
-      {/* Energy status */}
+      {/* Status */}
       <div style={{ marginTop: '8px', fontSize: '9px', fontFamily: 'var(--mono)', color: '#555', letterSpacing: '0.06em' }}>
-        {c3 < minC3
-          ? <span style={{ color: 'var(--red)' }}>⚠ C3 BELOW HOHMANN MINIMUM — MISSION WILL FAIL (intentional for ML demonstration)</span>
-          : <span style={{ color: 'var(--green)' }}>✓ SUFFICIENT ENERGY FOR {target.toUpperCase()} TRANSFER</span>
+        {Math.abs(dvSigma) < 1
+          ? <span style={{ color: 'var(--green)' }}>✓ WITHIN NOMINAL DISPERSION — TRANSFER SHOULD SUCCEED</span>
+          : Math.abs(dvSigma) <= 5
+            ? <span style={{ color: 'var(--red)' }}>⚠ {Math.abs(dvSigma).toFixed(1)}σ BURN ERROR — TRANSFER EXPECTED TO FAIL</span>
+            : <span style={{ color: 'var(--amber, #d18616)' }}>⚠ {Math.abs(dvSigma).toFixed(1)}σ — BEYOND SAMPLED DISPERSION, MODEL WILL FLAG OUT-OF-DISTRIBUTION</span>
         }
-        {' '}  |  EARTH DEPARTURE AT {earthPhase}°  |  PHASE: {useAutoPhase ? 'HOHMANN OPTIMAL' : `${phaseAhead ?? 0}°`}
+        {nominal != null && <> {'  |  '}NOMINAL TOI_V {nominal.toFixed(4)} km/s</>}
+        {!trained && <span style={{ color: 'var(--red)' }}>{'  |  '}NO TRAINED MODEL FOR THIS TARGET</span>}
       </div>
+      {genError && (
+        <div style={{ marginTop: '6px', fontSize: '9px', fontFamily: 'var(--mono)', color: 'var(--red)' }}>
+          GENERATE FAILED: {genError}
+        </div>
+      )}
     </div>
   )
 }
@@ -636,6 +861,7 @@ export default function Simulator() {
   const [minElapsed, setMinElapsed]   = useState(0.4)
   const [planetFilter, setPlanetFilter] = useState('ALL')
   const [apiOnline, setApiOnline]     = useState(null)
+  const [planetInfo, setPlanetInfo]   = useState(null)
 
   const [missions, setMissions]               = useState([])
   const [missionResults, setMissionResults]   = useState({})
@@ -661,6 +887,12 @@ export default function Simulator() {
   useEffect(() => {
     fetch(`${API}/api/health`, { signal: AbortSignal.timeout(3000) })
       .then(r => r.json()).then(() => setApiOnline(true)).catch(() => setApiOnline(false))
+  }, [])
+
+  // ── Planet nominals + sampled dispersions, for the mission creator sliders
+  useEffect(() => {
+    fetch(`${API}/api/simulator/planet_info`)
+      .then(r => r.json()).then(setPlanetInfo).catch(() => setPlanetInfo(null))
   }, [])
 
   // ── Cleanup on unmount
@@ -757,6 +989,8 @@ export default function Simulator() {
         abortPct:       step.elapsed_pct,
         abortProb:      step.probability,
         abortThreshold: step.threshold_used ?? null,
+        predMode:       step.predicted_failure_mode ?? prev.predMode,
+        modeConf:       step.mode_confidence ?? prev.modeConf,
         status:         'canceled',
         playbackPos:    pos + 1,
       }))
@@ -813,7 +1047,8 @@ export default function Simulator() {
           ...prev,
           status:       speed.delay === null ? 'paused' : 'streaming',
           calThreshold: ev.calibrated_threshold ?? null,
-          regime:       ev.regime ?? null,
+          regime:       ev.target_body ?? null,
+          modelAvail:   ev.model_available !== false,
           trueLabel:    ev.true_label,
         }))
         // Start playback timer (unless step mode)
@@ -828,6 +1063,8 @@ export default function Simulator() {
         bufferRef.current.push({
           elapsed_pct: ev.elapsed_pct, probability: ev.probability,
           isCancel: true, threshold_used: ev.threshold_used,
+          predicted_failure_mode: ev.predicted_failure_mode,
+          mode_confidence: ev.mode_confidence,
         })
       }
 
@@ -841,7 +1078,11 @@ export default function Simulator() {
           // If playback already consumed the cancel event, status is already canceled
           if (prev.status === 'canceled') {
             setMissionResults(p => ({ ...p, [mid]: { status: 'canceled', wasCorrect } }))
-            return { ...prev, wasCorrect, trueLabel: ev.true_label, finalProb: ev.final_prob }
+            return { ...prev, wasCorrect, trueLabel: ev.true_label, finalProb: ev.final_prob,
+                     predMode: ev.predicted_failure_mode ?? prev.predMode,
+                     actualFailureType: ev.actual_failure_type ?? null,
+                     modeCorrect: ev.mode_correct ?? null,
+                     ood: !!ev.out_of_distribution, oodFraction: ev.ood_fraction ?? 0 }
           }
           // Otherwise mark done when playback catches up (handled in advancePlayback)
           return {
@@ -849,6 +1090,11 @@ export default function Simulator() {
             wasCorrect,
             trueLabel:  ev.true_label,
             finalProb:  ev.final_prob,
+            predMode:   ev.predicted_failure_mode ?? prev.predMode,
+            actualFailureType: ev.actual_failure_type ?? null,
+            modeCorrect: ev.mode_correct ?? null,
+            ood: !!ev.out_of_distribution,
+            oodFraction: ev.ood_fraction ?? 0,
             _pendingStatus: finalStatus,
             _pendingWasCorrect: wasCorrect,
           }
@@ -940,7 +1186,7 @@ export default function Simulator() {
       failure_type: data.failure_type,
       target:       data.target_body,
       generated:    true,
-      c3:           data.c3,
+      dvSigma:      data.dv_sigma ?? null,
     }
     setMissions(prev => [genMission, ...prev])
     // Auto-select it
@@ -1137,6 +1383,7 @@ export default function Simulator() {
         <CreateMissionForm
           onGenerate={handleGenerated}
           onClose={() => setShowCreateForm(false)}
+          planetInfo={planetInfo}
           disabled={isStreaming} />
       )}
 
@@ -1200,6 +1447,7 @@ export default function Simulator() {
               isLoading={trajLoading}
               targetName={trajectory?.target_body ?? activeMission?.target}
               onScrub={isDone ? setScrubIdx : null}
+              operatingFrac={minElapsed}
             />
           </div>
 
@@ -1268,7 +1516,7 @@ export default function Simulator() {
             </div>
             {stream.regime && (
               <div style={{ marginTop: '4px', fontSize: '9px', color: '#333', fontFamily: 'var(--mono)', letterSpacing: '0.06em' }}>
-                REGIME: {stream.regime.toUpperCase()} MODEL
+                MODEL: {stream.regime.toUpperCase()} {stream.modelAvail === false ? '— NOT TRAINED' : ''}
               </div>
             )}
           </div>
@@ -1333,6 +1581,13 @@ export default function Simulator() {
         finalProb={stream.finalProb}
         abortPct={stream.abortPct}
         abortProb={stream.abortProb}
+        predMode={stream.predMode}
+        actualFailureType={stream.actualFailureType}
+        modeCorrect={stream.modeCorrect}
+        ood={stream.ood}
+        oodFraction={stream.oodFraction}
+        targetBody={stream.regime}
+        totalSteps={stream.buffer?.length || null}
         abortThreshold={stream.abortThreshold}
       />
     </div>

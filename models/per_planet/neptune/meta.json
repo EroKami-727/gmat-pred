@@ -1,0 +1,85 @@
+{
+  "planet": "neptune",
+  "n_missions": 10000,
+  "seq_len": 100,
+  "n_features": 13,
+  "feature_cols": [
+    "rel_x",
+    "rel_y",
+    "rel_z",
+    "spec_energy",
+    "fpa_deg",
+    "norm_target_dist",
+    "radial_vel",
+    "vel_mag",
+    "earth_rmag",
+    "ecc",
+    "mu_ratio",
+    "soi_ratio",
+    "dist_ratio"
+  ],
+  "downsample": 215,
+  "target_steps": 100,
+  "operating_frac": 0.4,
+  "threshold": 0.4975,
+  "best_epoch": 1,
+  "best_val_auc": 1.0,
+  "test": {
+    "0.10": {
+      "auc": 1.0,
+      "f1_fail": 1.0,
+      "mode_acc": 0.94,
+      "mode_acc_on_failures": 0.9066,
+      "p_fail_spread": 0.998055
+    },
+    "0.20": {
+      "auc": 1.0,
+      "f1_fail": 1.0,
+      "mode_acc": 0.9333,
+      "mode_acc_on_failures": 0.8963,
+      "p_fail_spread": 0.99795
+    },
+    "0.30": {
+      "auc": 1.0,
+      "f1_fail": 1.0,
+      "mode_acc": 0.9367,
+      "mode_acc_on_failures": 0.9015,
+      "p_fail_spread": 0.997883
+    },
+    "0.40": {
+      "auc": 1.0,
+      "f1_fail": 1.0,
+      "mode_acc": 0.9487,
+      "mode_acc_on_failures": 0.9201,
+      "p_fail_spread": 0.997984
+    }
+  },
+  "test_at_operating_point": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0,
+    "tp": 964,
+    "fp": 0,
+    "fn": 0,
+    "tn": 536
+  },
+  "mode_alpha": 0.5,
+  "failure_classes": {
+    "0": "success",
+    "1": "surface_impact",
+    "2": "orbit_too_high",
+    "3": "missed_target",
+    "4": "source_impact",
+    "5": "hyperbolic_flyby",
+    "6": "degenerate_orbit",
+    "7": "unknown"
+  },
+  "aux_dim": 8,
+  "threshold_selection": "plateau midpoint of failure-class F1 on val",
+  "recalibrated_test": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0,
+    "auc": 1.0
+  }
+}

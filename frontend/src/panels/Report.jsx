@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
+import { API } from '../lib/api.js'
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 
@@ -13,6 +15,10 @@ const MODEL_COMPARISON = [
   { name: 'Transformer\n(calibrated)', f1: 0.921, auc: 0.984 },
 ]
 
+// HISTORICAL — these are leave-one-target-out results for the SINGLE GLOBAL
+// model that production no longer uses. Kept because the experiment is real and
+// it is the evidence that motivated the per-planet split. Current production
+// numbers are fetched live from /api/simulator/model_report.
 const LOTO_TARGETS = [
   { name: 'Saturn',  auc: 1.000, f1: 1.000, status: 'good',    note: 'Perfect generalisation' },
   { name: 'Neptune', auc: 1.000, f1: 1.000, status: 'good',    note: 'Perfect generalisation' },
@@ -51,6 +57,74 @@ const JIT_DATA = [
 const TT = {
   contentStyle: { background: '#0f0f0f', border: '1px solid #2a2a2a', fontSize: 10, fontFamily: 'Share Tech Mono, monospace' },
   labelStyle: { color: '#888888' },
+}
+
+// Live production metrics — read from each model's meta.json via the API so
+// this table cannot go stale the way the hardcoded LOTO one did.
+function ProductionTable() {
+  const [rows, setRows] = useState(null)
+  const [frac, setFrac] = useState(0.4)
+  const [err,  setErr]  = useState(null)
+
+  useEffect(() => {
+    fetch(`${API}/api/simulator/model_report`)
+      .then(r => r.json())
+      .then(d => { setRows(d.planets || []); setFrac(d.operating_frac ?? 0.4) })
+      .catch(e => setErr(String(e)))
+  }, [])
+
+  if (err)   return <Card style={{ padding: '14px 20px' }}>
+    <span style={{ fontSize: '10px', color: 'var(--red)', fontFamily: 'Share Tech Mono,monospace' }}>
+      API OFFLINE — {err}</span></Card>
+  if (!rows) return <Card style={{ padding: '14px 20px' }}>
+    <span style={{ fontSize: '10px', color: '#555', fontFamily: 'Share Tech Mono,monospace' }}>
+      LOADING…</span></Card>
+
+  const num = (v, d = 3) => (v == null ? '—' : Number(v).toFixed(d))
+  const col = (v, hi = 0.99, mid = 0.95) =>
+    v == null ? '#555' : v >= hi ? 'var(--green)' : v >= mid ? '#ffaa00' : 'var(--red)'
+
+  return (
+    <Card style={{ padding: '14px 0' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', fontFamily: 'Share Tech Mono,monospace' }}>
+        <thead>
+          <tr style={{ color: '#555', fontSize: '10px', letterSpacing: '0.08em' }}>
+            <th style={{ padding: '4px 20px', textAlign: 'left',  fontWeight: 400 }}>TARGET</th>
+            <th style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 400 }}>AUC</th>
+            <th style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 400 }}>RECALL</th>
+            <th style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 400 }}>PREC</th>
+            <th style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 400 }}>F1</th>
+            <th style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 400 }}>MODE</th>
+            <th style={{ padding: '4px 20px 4px 10px', textAlign: 'right', fontWeight: 400 }}>THR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.planet} style={{ borderTop: '1px solid #1a1a1a' }}>
+              <td style={{ padding: '7px 20px', color: '#ccc' }}>
+                {r.planet.charAt(0).toUpperCase() + r.planet.slice(1)}
+                {r.has_assist && <span style={{ fontSize: '8px', color: '#4a7', marginLeft: '7px',
+                  border: '1px solid #2a4a35', padding: '1px 3px' }}>+TREE</span>}
+                {!r.trained && <span style={{ fontSize: '8px', color: 'var(--red)', marginLeft: '7px' }}>NOT TRAINED</span>}
+              </td>
+              <td style={{ padding: '7px 10px', textAlign: 'right', color: col(r.auc) }}>{num(r.auc, 4)}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'right', color: col(r.recall) }}>{num(r.recall, 4)}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'right', color: col(r.precision) }}>{num(r.precision, 4)}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'right', color: col(r.f1) }}>{num(r.f1, 4)}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'right', color: col(r.mode_acc, 0.95, 0.90) }}>{num(r.mode_acc, 3)}</td>
+              <td style={{ padding: '7px 20px 7px 10px', textAlign: 'right', color: '#888' }}>{num(r.threshold, 3)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ fontSize: '10px', color: '#555', marginTop: '10px', padding: '0 20px', lineHeight: 1.6 }}>
+        One model per target, evaluated on its own held-out split at {Math.round(frac * 100)}% of
+        trajectory observed. MODE = accuracy of predicting <em>how</em> a mission fails.
+        +TREE marks planets where a gradient-boosted assist is fused at the decision window to
+        recover rare failure modes the sequence model misses.
+      </div>
+    </Card>
+  )
 }
 
 function Section({ title, children }) {
@@ -376,11 +450,26 @@ export default function Report() {
 
         {/* Right column */}
         <div>
-          <Section title="Generalisation — leave-one-target-out (LOTO) results">
+          <Section title="Production models — per planet (live)">
+            <ProductionTable />
+          </Section>
+
+          <Section title="Superseded — leave-one-target-out on the single global model">
+            <div style={{
+              fontSize: '10px', color: '#c08a2e', fontFamily: 'Share Tech Mono,monospace',
+              border: '1px solid #3a2a0a', background: '#140f03',
+              padding: '7px 10px', marginBottom: '10px', lineHeight: 1.6,
+            }}>
+              ⚠ HISTORICAL — describes the one-model-for-all-planets architecture that
+              production replaced. These numbers are why the split happened; they are not
+              current performance. See the table above.
+            </div>
             <LotoTable />
             <div style={{ fontSize: '10px', color: '#555', marginTop: '8px', lineHeight: 1.6 }}>
               Held out one planet at a time, trained on the other 7, tested on the held-out one.
-              Stable across 5 seeds (std = 0.000) — the result is real, not noise.
+              Stable across 5 seeds (std = 0.000) — the result is real, not noise. The failures
+              here are regime shift: one shared scaler cannot span all targets, which is exactly
+              what the per-planet models fix.
             </div>
           </Section>
 

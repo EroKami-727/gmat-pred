@@ -1,0 +1,362 @@
+[
+  {
+    "epoch": 1,
+    "loss": 0.378693,
+    "val_auc": 0.999387,
+    "val_f1_fail": 0.99847
+  },
+  {
+    "epoch": 2,
+    "loss": 0.099082,
+    "val_auc": 0.999951,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 3,
+    "loss": 0.060793,
+    "val_auc": 0.998989,
+    "val_f1_fail": 0.99847
+  },
+  {
+    "epoch": 4,
+    "loss": 0.060981,
+    "val_auc": 0.999241,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 5,
+    "loss": 0.088082,
+    "val_auc": 0.999053,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 6,
+    "loss": 0.069758,
+    "val_auc": 0.999072,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 7,
+    "loss": 0.059404,
+    "val_auc": 0.998982,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 8,
+    "loss": 0.053817,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 9,
+    "loss": 0.045928,
+    "val_auc": 0.99901,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 10,
+    "loss": 0.041536,
+    "val_auc": 0.998982,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 11,
+    "loss": 0.049093,
+    "val_auc": 0.998982,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 12,
+    "loss": 0.038436,
+    "val_auc": 0.999004,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 13,
+    "loss": 0.044418,
+    "val_auc": 0.999472,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 14,
+    "loss": 0.049528,
+    "val_auc": 0.998982,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 15,
+    "loss": 0.050626,
+    "val_auc": 0.999129,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 16,
+    "loss": 0.037534,
+    "val_auc": 0.99914,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 17,
+    "loss": 0.042426,
+    "val_auc": 0.999806,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 18,
+    "loss": 0.043215,
+    "val_auc": 0.999269,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 19,
+    "loss": 0.035415,
+    "val_auc": 0.999955,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 20,
+    "loss": 0.031128,
+    "val_auc": 0.999868,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 21,
+    "loss": 0.033251,
+    "val_auc": 0.999773,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 22,
+    "loss": 0.036797,
+    "val_auc": 0.999861,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 23,
+    "loss": 0.037249,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 24,
+    "loss": 0.027604,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 25,
+    "loss": 0.027778,
+    "val_auc": 0.999877,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 26,
+    "loss": 0.031321,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 27,
+    "loss": 0.028849,
+    "val_auc": 0.999818,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 28,
+    "loss": 0.025283,
+    "val_auc": 0.999994,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 29,
+    "loss": 0.026009,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 30,
+    "loss": 0.029183,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 31,
+    "loss": 0.030227,
+    "val_auc": 0.999973,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 32,
+    "loss": 0.021849,
+    "val_auc": 0.999999,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 33,
+    "loss": 0.027631,
+    "val_auc": 0.999288,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 34,
+    "loss": 0.028544,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 35,
+    "loss": 0.019159,
+    "val_auc": 0.999648,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 36,
+    "loss": 0.026583,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 37,
+    "loss": 0.018736,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 38,
+    "loss": 0.018883,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 39,
+    "loss": 0.02015,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 40,
+    "loss": 0.01919,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 41,
+    "loss": 0.026458,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 42,
+    "loss": 0.019667,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 43,
+    "loss": 0.021248,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 44,
+    "loss": 0.015607,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.999491
+  },
+  {
+    "epoch": 45,
+    "loss": 0.024159,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 46,
+    "loss": 0.023762,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 47,
+    "loss": 0.031983,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 48,
+    "loss": 0.019291,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 49,
+    "loss": 0.011759,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 50,
+    "loss": 0.013979,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 51,
+    "loss": 0.016533,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 52,
+    "loss": 0.020652,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 53,
+    "loss": 0.026429,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 54,
+    "loss": 0.02191,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 55,
+    "loss": 0.021546,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 56,
+    "loss": 0.019489,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 57,
+    "loss": 0.017954,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 58,
+    "loss": 0.013295,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 59,
+    "loss": 0.020129,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  },
+  {
+    "epoch": 60,
+    "loss": 0.021271,
+    "val_auc": 1.0,
+    "val_f1_fail": 0.998981
+  }
+]

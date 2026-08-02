@@ -1,6 +1,15 @@
 """
-OrbitGuard Regime Router
-========================
+OrbitGuard Regime Router  [SUPERSEDED — use src/ml/planet_router.py]
+====================================================================
+Kept for provenance of the pre-2026-08 results. NOT used by the API.
+
+Why it was replaced: this router serves models trained with ONE scaler shared
+across 3-4 planets. That scaler's IQR spans the cross-planet range, which
+compresses within-planet variation to ~1e-5 of the input range — unlearnable by
+gradient descent. The served models emitted a near-constant probability per
+planet (every Venus mission scored P(fail)=0.020910). See
+docs/RESEARCH_LEDGER.md, "Per-Planet Model Rebuild".
+
 Routes trajectory inference to the correct regime model based on target body.
 
 Regime split (excluding Moon — too short a transfer, genuinely different physics):

@@ -62,3 +62,6 @@ reports/
 
 # Parquet split temps
 data/_*_split.parquet
+
+# Detached pipeline logs
+.runlogs/

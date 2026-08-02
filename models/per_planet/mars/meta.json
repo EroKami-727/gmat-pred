@@ -1,0 +1,85 @@
+{
+  "planet": "mars",
+  "n_missions": 10000,
+  "seq_len": 100,
+  "n_features": 13,
+  "feature_cols": [
+    "rel_x",
+    "rel_y",
+    "rel_z",
+    "spec_energy",
+    "fpa_deg",
+    "norm_target_dist",
+    "radial_vel",
+    "vel_mag",
+    "earth_rmag",
+    "ecc",
+    "mu_ratio",
+    "soi_ratio",
+    "dist_ratio"
+  ],
+  "downsample": 5,
+  "target_steps": 100,
+  "operating_frac": 0.4,
+  "threshold": 0.3325,
+  "best_epoch": 40,
+  "best_val_auc": 0.9989,
+  "test": {
+    "0.10": {
+      "auc": 0.9993,
+      "f1_fail": 0.9841,
+      "mode_acc": 0.9807,
+      "mode_acc_on_failures": 0.9767,
+      "p_fail_spread": 0.999745
+    },
+    "0.20": {
+      "auc": 0.9994,
+      "f1_fail": 0.986,
+      "mode_acc": 0.9853,
+      "mode_acc_on_failures": 0.983,
+      "p_fail_spread": 0.999744
+    },
+    "0.30": {
+      "auc": 0.9993,
+      "f1_fail": 0.9878,
+      "mode_acc": 0.9853,
+      "mode_acc_on_failures": 0.9839,
+      "p_fail_spread": 0.999743
+    },
+    "0.40": {
+      "auc": 0.9994,
+      "f1_fail": 0.9887,
+      "mode_acc": 0.986,
+      "mode_acc_on_failures": 0.9884,
+      "p_fail_spread": 0.999686
+    }
+  },
+  "test_at_operating_point": {
+    "recall": 0.9919,
+    "precision": 0.9928,
+    "f1": 0.9924,
+    "tp": 1108,
+    "fp": 8,
+    "fn": 9,
+    "tn": 375
+  },
+  "mode_alpha": 0.5,
+  "failure_classes": {
+    "0": "success",
+    "1": "surface_impact",
+    "2": "orbit_too_high",
+    "3": "missed_target",
+    "4": "source_impact",
+    "5": "hyperbolic_flyby",
+    "6": "degenerate_orbit",
+    "7": "unknown"
+  },
+  "aux_dim": 8,
+  "threshold_selection": "plateau midpoint of failure-class F1 on val",
+  "recalibrated_test": {
+    "recall": 0.9978,
+    "precision": 0.9933,
+    "f1": 0.9956,
+    "auc": 0.9998
+  }
+}

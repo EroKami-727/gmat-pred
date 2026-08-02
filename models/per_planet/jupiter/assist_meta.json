@@ -1,0 +1,15 @@
+{
+  "window": 40,
+  "auc": 1.0,
+  "operating_frac": 0.4,
+  "per_mode_recall_at_0.5": {
+    "surface_impact": {
+      "n": 135,
+      "recall": 1.0
+    },
+    "orbit_too_high": {
+      "n": 832,
+      "recall": 1.0
+    }
+  }
+}

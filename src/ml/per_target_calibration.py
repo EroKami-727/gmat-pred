@@ -1,6 +1,11 @@
 """
-Per-Target Threshold Calibration
-=================================
+Per-Target Threshold Calibration  [SUPERSEDED — use src/ml/recalibrate.py]
+==========================================================================
+Kept for provenance. This calibrates the old regime models, whose per-planet
+outputs are near-constant, so no threshold it finds can separate failures.
+See docs/RESEARCH_LEDGER.md, "Per-Planet Model Rebuild".
+
+
 For each interplanetary target body, find the P(fail) threshold that maximises F1
 on the full dataset (post-training operating-point search — not leaking into train
 weights since the model is frozen).

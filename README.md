@@ -165,32 +165,191 @@ The dashboard includes a real-time mission simulator that runs the ML model live
 - **Orbital map**: synodic-frame trajectory visualisation; hover after completion to scrub through telemetry at any point
 - **Abort details**: when the model fires, shows the calibrated threshold, P(fail) at abort, and elapsed % alongside a CORRECT/FALSE-POSITIVE verdict
 
-### Regime-split model architecture
+### Per-planet model architecture
 
-A single global model fails on this dataset because inner and outer planets occupy categorically different physical regimes (`dist_ratio`, `earth_rmag` shift by 10–43 σ). The production system uses two specialist Transformers:
+The production system trains **one model per target body**. This replaced an
+earlier regime-split design (one model for inner planets, one for outer) that
+silently failed — see the root-cause note below.
 
-| Regime | Targets | Downsample | F1 | AUC |
-|--------|---------|-----------|-----|-----|
-| Inner | Mercury, Venus, Mars | 15 | 0.990 | 0.997 |
-| Outer | Jupiter, Saturn, Uranus, Neptune | 50 | 0.990 | 0.996 |
+Each model is the same Transformer (d_model=128, nhead=8, 4 Pre-LN layers, CLS
+token) with two heads sharing one trunk:
 
-Each model uses the same architecture (d_model=128, nhead=8, 4 Pre-LN Transformer layers, CLS token). The `RegimeRouter` (`src/ml/regime_router.py`) selects the right model and calibrated threshold at inference time.
+- **outcome head** — will this mission fail?
+- **failure-mode head** — *how* will it fail (surface impact / orbit too high / missed target)?
+
+`PlanetRouter` (`src/ml/planet_router.py`) selects the model, its per-timestep
+normalisation statistics, and its calibrated threshold at inference time.
+
+#### Root cause: why the regime-split models failed
+
+The regime models fitted **one scaler across 3–4 planets**. That scaler's IQR
+spans the *cross-planet* range (`spec_energy` IQR = 23.6, covering Mercury
+through Mars), so *within-planet* mission-to-mission variation collapsed to
+~1e-5 of the input range — below what gradient descent can learn to amplify,
+and Pre-LN LayerNorm removes what survives.
+
+The result was a model that emitted a near-constant probability per planet:
+every Venus mission scored P(fail) = 0.020910 regardless of outcome, so no
+threshold could ever separate them.
+
+This went unnoticed because **XGBoost baselines were unaffected** — trees split
+on absolute feature values and need no amplification, so they reported
+AUC ≈ 1.0 on the very same data that the transformer could not learn.
+
+Two changes fix it:
+
+1. **Per-planet fit** — the scaler sees one planet, so within-planet spread
+   occupies the full dynamic range.
+2. **Per-timestep z-scoring** — each feature is standardised against its
+   distribution *at that timestep index* across missions, making
+   mission-to-mission deviation O(1). Mars val AUC 0.939 → 0.998 from this alone.
+
+Models are also trained on **random-length prefixes**, so predictions are
+in-distribution at any point of the stream rather than only at the 40% horizon.
+
+### Results (held-out test split, 40% of trajectory observed)
+
+1,200 held-out missions per planet — never seen in training or validation.
+
+| Target  | AUC | Recall | Precision | F1 | Failure-mode acc |
+|---------|-----|--------|-----------|-----|------------------|
+| Moon    | 0.9994 | 0.9925 | 0.9851 | 0.9888 | 1.0000 |
+| Mercury | 0.9996 | 0.9989 | 0.9923 | 0.9956 | 0.9812 |
+| Venus   | 1.0000 | 0.9975 | 0.9987 | 0.9981 | 0.9861 |
+| Mars    | 0.9998 | 0.9978 | 0.9933 | 0.9956 | 0.9989 |
+| Jupiter | 1.0000 | 1.0000 | 0.9987 | 0.9994 | 0.9449 |
+| Saturn  | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.9769 |
+| Uranus  | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.9962 |
+| Neptune | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.9293 |
+| **Overall** | — | **0.9983** | **0.9959** | **0.9971** | **0.9773** |
+
+11 false negatives in 9,600 held-out missions. All eight targets carry a fused
+tree assist.
+
+**Moon** was missing entirely until 2026-08-02: it has 10,000 missions in the
+dataset (85M rows, 6-day transfers at 60 s cadence) but was never extracted or
+trained, so the simulator listed Moon missions it could not score — the router
+returned `available: false`, `p_fail = 0.0`, and no abort could ever fire. Its
+cadence differs from the interplanetary targets by 900x, which
+`planet_config.CADENCE_HOURS` now handles. Previous regime models on the same
+missions: Venus constant P(fail)=0.020910 (AUC ≈ 0.5), Mars 0.61, Jupiter 0.87.
+
+### Tree assist for rare failure modes
+
+The Transformer misses rare failure modes even when the signal is fully present
+in its own input. Uranus `surface_impact` is 119 of 6,611 failures and sequence
+recall on it was **0.000** — while XGBoost on the *identical per-timestep
+z-normalised window* separates it from success at **AUC 1.000**. Oversampling the
+mode up to 45x (`--mode-alpha 1.0`) did not help, so this is an optimisation
+limit of the sequence model, not missing information.
+
+`src/ml/train_assist.py` fits a per-planet gradient-boosted classifier on that
+same window; `PlanetRouter` fuses it with the Transformer (`max`) once the prefix
+is long enough, and the threshold is recalibrated on the fused score. Uranus
+`surface_impact` recall went 0.000 → 1.000 and overall F1 0.9960 → 0.9981.
+
+The Transformer remains primary: it streams at any prefix length and predicts the
+failure mode. The tree only contributes at the fixed decision window.
+
+```bash
+/home/haise/Coding/venvs/gmat-pred/bin/python3 -m src.ml.train_assist --all
+/home/haise/Coding/venvs/gmat-pred/bin/python3 -m src.ml.recalibrate
+```
+
+### Does the trajectory actually help? (`src/ml/prune_economics.py`)
+
+The honest answer for this dataset is **no**. Screening from the 6 launch-burn
+offsets *before running anything* matches the telemetry model and costs nothing:
+
+| Screen | Compute saved | Good missions destroyed |
+|--------|---------------|-------------------------|
+| **T0** — launch parameters, before propagating | **64.6%** | **0.8%** |
+| T40 — telemetry Transformer at 40% | 38.9% | 0.2% |
+| Cascade — T0 where confident, else T40 | 65.5% | 1.3% |
+
+Compute is charged in propagation-days at 99% failure recall. T0 reaches
+AUC 0.9975–1.0000 per planet and predicts the failure *mode* at 0.96–0.99,
+matching the sequence model on both tasks.
+
+The cascade does not pay for itself: it buys 0.9 pp of savings for 0.5 pp more
+false prunes. **A 6-feature tabular classifier is sufficient for pruning here.**
+
+This is expected once stated plainly: the simulator is deterministic, so the
+outcome is a fixed function of the injection parameters and the trajectory is
+just their integral — it carries no information the parameters do not already
+have. A sequential model earns its place only where that stops being true
+(mid-flight stochasticity, unmodelled dynamics, sensor noise, or missions whose
+launch parameters are not recorded).
+
+> Linear models are **not** sufficient: logistic regression on the same six
+> features scores AUC 0.49 — chance — on every planet. The map is strongly
+> nonlinear, so this is a case for ML, just not for a sequence model.
+
+For comparison, the previous regime models on the same missions: Venus emitted a
+constant P(fail)=0.020910 (AUC ≈ 0.5), Mars AUC 0.61, Jupiter AUC 0.87.
+
+Accuracy is essentially flat from 10% to 40% of the trajectory — the outcome is
+largely determined by injection conditions — so aborts could be taken earlier
+than the current 40% operating point if desired.
+
+Reproduce with:
+
+```bash
+/home/haise/Coding/venvs/gmat-pred/bin/python3 test_ml.py --limit 1200
+```
+
+### Known limitations
+
+- **The extracts are in FILE order, not mission_id order.** `missions.parquet`
+  is not sorted by `mission_id`, and neither is `summary.parquet`. Joining any
+  two of {extract, params, summary} by row position silently pairs unrelated
+  missions. Each `.npz` now carries a `mission_ids` array
+  (`src/data_collection/recover_mission_ids.py`) — **always join on it.** Two
+  analyses in this repo were wrong because of this before it was caught, so the
+  join is now asserted in `prune_economics.py`.
+- **Mission list sampling.** `/api/simulator/missions` previously collected the
+  first `n*20` missions in file order. Since each planet's file opens with the
+  targeter's nominal seeds, that pool held zero failures for Jupiter/Saturn/
+  Neptune and, for Uranus, only the grazing failures the model misses. It now
+  reads row groups in random order with a per-group cap.
+
+### Mission creator
+
+`src/api/mission_builder.py` builds user-defined missions with the **same
+propagator and feature code that produced the dataset**
+(`gmat_runner.run_synthetic`), so created missions are in-distribution and
+scorable. Verified identical to real telemetry at step 0 (`rel_x` −4.14341e+07,
+`spec_energy` 9.0969, `earth_rmag` 6564.43 for a nominal Venus transfer).
+
+Missions are parameterised as the dataset is — a circular parking orbit plus an
+impulsive TOI burn in the VNB frame — with offsets relative to the Hohmann
+nominal. `/api/simulator/planet_info` returns both the nominal and the 1-sigma
+dispersions for slider scaling.
+
+> The earlier `src/api/trajectory_gen.py` propagated heliocentric two-body motion
+> and computed Sun-referenced elements, so its features did not match the
+> training schema despite its docstring claiming they did (Venus `spec_energy`
+> −514.9 vs the correct Earth-centric +9.10). Every mission it produced scored
+> |z| ~ 1e13 and was unscorable. It is still used for the orbital-map preview
+> only, not for inference.
+
+Transfers are extremely sensitive: dispersions are small (Venus `dv_V`
+sigma = 0.003 km/s) and a 2-sigma burn error already flips a mission to failure,
+consistent with the dataset's 32% success rate. Beyond ~5 sigma the input is
+flagged out-of-distribution — advisory only, since P(fail) remains correct
+there; it is not a veto.
 
 ### Calibrated thresholds
 
-After training, `src/ml/per_target_calibration.py` sweeps P(fail) thresholds per planet and picks the one that maximises **failure-class F1** (`pos_label=0`). Results live in `models/thresholds.json` and are applied automatically in the stream endpoint.
+Thresholds are chosen on the **validation** split as the midpoint of the plateau
+of thresholds maximising **failure-class F1** (`pos_label=0`), then reported
+against the untouched test split. Taking the plateau midpoint rather than the
+first maximum keeps the operating point away from a cliff edge.
 
-To re-run calibration after model updates:
+To recalibrate without retraining (models stay frozen; only the operating point moves):
 
 ```bash
-VENV=/home/haise/Coding/venvs/gmat-pred/bin/python3
-DATA=/media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet
-
-$VENV -m src.ml.per_target_calibration \
-  --data $DATA \
-  --models-dir models \
-  --early-exit 0.4 \
-  --output models/thresholds.json
+/home/haise/Coding/venvs/gmat-pred/bin/python3 -m src.ml.recalibrate
 ```
 
 ---
@@ -210,48 +369,40 @@ cd frontend && npm run dev
 
 ---
 
-## Train Regime Models
+## Train Per-Planet Models
+
+The whole rebuild runs unattended in one detached process (survives editor
+restarts; progress in `.runlogs/pipeline.log`):
+
+```bash
+setsid nohup ./run_pipeline.sh > /dev/null 2>&1 &
+tail -f .runlogs/pipeline.log
+```
+
+Or run the stages by hand:
 
 ```bash
 VENV=/home/haise/Coding/venvs/gmat-pred/bin/python3
 DATA=/media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet
 
-# Step 1 — Pre-downsample outer planets (avoids 43 GB NTFS temp writes during training)
-$VENV -m src.data_collection.presample \
-  --data $DATA \
-  --planets Jupiter Saturn Uranus Neptune \
-  --downsample 50 \
-  --out data/outer_ds50.parquet
+# Step 1 — Extract compact per-planet arrays (one streaming pass, ~70 MB each).
+# Each planet is downsampled to ~100 steps/mission so Mercury (202 raw rows) and
+# Neptune (21,471) end up with comparable sequence lengths.
+$VENV -m src.data_collection.extract_per_planet \
+  --data $DATA --out-dir data/per_planet
 
-# Step 2a — Train inner planet model (Mercury/Venus/Mars)
-$VENV -m src.ml.train \
-  --data $DATA \
-  --planet-filter mercury venus mars \
-  --model transformer \
-  --epochs 50 \
-  --early-exit 0.4 \
-  --downsample-factor 15 \
-  --seed 42 \
-  --output-dir models/inner_production
+# Step 2 — Train one dual-head model per planet (~50s each on an RTX 4060)
+$VENV -m src.ml.per_planet_train --all --epochs 60
 
-# Step 2b — Train outer planet model (Jupiter/Saturn/Uranus/Neptune)
-$VENV -m src.ml.train \
-  --data data/outer_ds50.parquet \
-  --planet-filter jupiter saturn uranus neptune \
-  --model transformer \
-  --epochs 50 \
-  --early-exit 0.4 \
-  --downsample-factor 1 \
-  --seed 42 \
-  --output-dir models/outer_production
-
-# Step 3 — Calibrate per-target thresholds (failure-class F1, pos_label=0)
-$VENV -m src.ml.per_target_calibration \
-  --data $DATA \
-  --models-dir models \
-  --early-exit 0.4 \
-  --output models/thresholds.json
+# Step 3 — Recalibrate thresholds (optional; step 2 already calibrates)
+$VENV -m src.ml.recalibrate
 ```
+
+> **Memory note:** Neptune is 214M rows. Extraction streams one batch at a time
+> with Arrow readahead disabled, but still peaks near 17 GB because Arrow's pool
+> does not fully return freed blocks. It is a one-time cost — the `.npz` outputs
+> are cached, and step 1 skips planets already extracted. Close memory-hungry
+> apps before a full re-extract on a 24 GB machine.
 
 ---
 

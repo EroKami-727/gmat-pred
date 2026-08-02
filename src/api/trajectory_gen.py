@@ -86,10 +86,29 @@ def _rk4_step(r: np.ndarray, v: np.ndarray, dt: float) -> tuple[np.ndarray, np.n
     return r_new, v_new
 
 
+def _context_features(target: str) -> tuple[float, float, float]:
+    """
+    The three constant-per-mission context features, matching
+    `src/data_collection/generator._compute_context_features` exactly.
+
+    These are MISSION CONSTANTS, not per-timestep quantities. An earlier version
+    of this module recomputed them from the instantaneous spacecraft-target
+    distance, so they varied along the trajectory (Venus dist_ratio drifted
+    0.820 -> 0.731 where the training data holds a constant 0.277).
+    """
+    p = PLANET_DATA[target.lower()]
+    transfer_dist = abs(p["a_au"] - _EARTH["a_au"]) * AU     # km
+    mu_ratio = p["mu"] / MU_SUN
+    soi_ratio = p["soi_km"] / max(transfer_dist, 1.0)
+    dist_ratio = transfer_dist / AU
+    return mu_ratio, soi_ratio, dist_ratio
+
+
 def _features(
     r_sc: np.ndarray, v_sc: np.ndarray,
     r_tgt: np.ndarray, r_earth: np.ndarray,
     mu_tgt: float, soi_km: float,
+    context: tuple[float, float, float] | None = None,
 ) -> list[float]:
     """Return 13 features in FEATURE_COLS order."""
     rel = r_sc - r_tgt
@@ -110,11 +129,16 @@ def _features(
 
     dist_to_tgt     = float(np.linalg.norm(rel))
     norm_target_dist = dist_to_tgt / soi_km          # dist / SOI
-    soi_ratio        = soi_km / max(dist_to_tgt, 1.0)  # SOI / dist
-    dist_ratio       = dist_to_tgt / AU              # dist / 1 AU
+
+    # Context features are constants of the mission, supplied by the caller.
+    if context is None:
+        mu_ratio = mu_tgt / MU_SUN
+        soi_ratio = 0.0
+        dist_ratio = 0.0
+    else:
+        mu_ratio, soi_ratio, dist_ratio = context
 
     earth_rmag = float(np.linalg.norm(r_sc - r_earth))
-    mu_ratio   = mu_tgt / MU_SUN
     vel_mag    = v_norm
 
     return [rel_x, rel_y, rel_z, spec_energy, fpa_deg, norm_target_dist,
@@ -210,6 +234,7 @@ def generate_mission(
 
     # ── Build outputs ──────────────────────────────────────────────────────
     positions, telemetry, feature_rows = [], [], []
+    context = _context_features(target)
 
     for rank, idx in enumerate(indices):
         t    = all_t[idx]
@@ -218,7 +243,7 @@ def generate_mission(
         r_tgt   = _planet_pos(target, t, target_phase0)
         r_earth = _earth_pos(t, earth_phase0)
 
-        feats = _features(r, v, r_tgt, r_earth, mu_tgt, soi_km)
+        feats = _features(r, v, r_tgt, r_earth, mu_tgt, soi_km, context)
         ep    = round((rank + 1) / len(indices), 5)
 
         rel = r - r_tgt

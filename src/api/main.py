@@ -40,8 +40,10 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.ml.dataset import TrajectoryDataset, FEATURE_COLS
 from src.ml.model import TrajectoryLSTM, TrajectoryTransformer
-from src.ml.regime_router import RegimeRouter
-from src.api.trajectory_gen import generate_mission, hohmann_c3, optimal_phase_deg, PLANET_DATA
+from src.ml.planet_router import PlanetRouter
+from src.ml.planet_config import PLANETS as ALL_PLANETS, OPERATING_FRAC
+from src.api.trajectory_gen import hohmann_c3, optimal_phase_deg, PLANET_DATA
+from src.api.mission_builder import build_mission, nominal_for, dispersion_scale
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -57,6 +59,7 @@ app.add_middleware(
 )
 
 MODELS_DIR = Path("models")
+PLANET_MODELS_DIR = Path("models/per_planet")
 REPORTS_DIR = Path("reports/ablation")
 
 # Global state for training jobs
@@ -66,18 +69,18 @@ _log_queues: dict[str, list[str]] = {}
 # Thread pool for blocking inference
 _executor = ThreadPoolExecutor(max_workers=4)
 
-# Regime router (lazy-loaded, one instance)
-_router: RegimeRouter | None = None
+# Per-planet router (lazy-loaded, one instance)
+_router: PlanetRouter | None = None
 
 # In-memory store for user-generated missions (mission_id → trajectory/features dict)
 _gen_cache: dict[str, dict] = {}
 _gen_counter = 0
 
 
-def _load_router() -> RegimeRouter:
+def _load_router() -> PlanetRouter:
     global _router
     if _router is None:
-        _router = RegimeRouter(MODELS_DIR)
+        _router = PlanetRouter(PLANET_MODELS_DIR)
     return _router
 
 # Regex to parse train.py epoch line:
@@ -405,12 +408,7 @@ async def router_reload():
 async def get_thresholds():
     """Return per-target calibrated P(fail) thresholds for the simulator UI."""
     router = _load_router()
-    from src.ml.regime_router import INNER_PLANETS, OUTER_PLANETS, DEFAULT_THRESHOLD
-    all_targets = sorted(INNER_PLANETS | OUTER_PLANETS)
-    return {
-        target: router.threshold_for(target)
-        for target in all_targets
-    }
+    return {target: router.threshold_for(target) for target in sorted(ALL_PLANETS)}
 
 
 @app.get("/api/simulator/missions")
@@ -438,16 +436,31 @@ async def sample_missions(
 
         want_target = target.lower() if target != "ALL" else None
         seen: dict[int, dict] = {}
-        stop_at = n * 20   # collect this many unique missions then stop
+        stop_at = n * 20
 
-        for batch in pf.iter_batches(batch_size=100_000, columns=available):
+        # Read row groups in RANDOM order, not file order. Missions are written
+        # in mission_id order and the first block of each planet is the
+        # targeter's near-nominal seeds: reading from the start returned a pool
+        # that was mostly successes (Jupiter/Saturn/Neptune had zero failures in
+        # the first 240) and, for Uranus, only the grazing failures the model is
+        # known to miss. Random row groups give a pool that reflects the dataset.
+        rng = np.random.default_rng(seed)
+        groups = rng.permutation(pf.num_row_groups)
+        # Cap per group so the pool spans many regions of the file: a single
+        # row group holds a contiguous mission_id range, and taking a whole one
+        # would just move the bias rather than remove it.
+        per_group_cap = max(2, stop_at // 8)
+
+        for gi in groups:
+            tbl = pf.read_row_group(int(gi), columns=available)
             if want_target:
-                mask    = pc.equal(pc.utf8_lower(batch.column("target_body")),
-                                   pa.scalar(want_target))
-                batch   = batch.filter(mask)
-            if batch.num_rows == 0:
+                mask = pc.equal(pc.utf8_lower(tbl.column("target_body")),
+                                pa.scalar(want_target))
+                tbl = tbl.filter(mask)
+            if tbl.num_rows == 0:
                 continue
-            df = batch.to_pandas()
+            df = tbl.to_pandas()
+            taken = 0
             for mid, grp in df.groupby("mission_id", sort=False):
                 mid = int(mid)
                 if mid not in seen:
@@ -458,12 +471,16 @@ async def sample_missions(
                         "failure_type": str(row["failure_type"])  if "failure_type" in row.index else "unknown",
                         "target":       str(row["target_body"])   if "target_body"  in row.index else "unknown",
                     }
+                    taken += 1
+                    if taken >= per_group_cap:
+                        break
             if len(seen) >= stop_at:
                 break
 
         missions = list(seen.values())
-        rng    = np.random.default_rng(seed)
-        idx    = rng.choice(len(missions), min(n, len(missions)), replace=False)
+        if not missions:
+            return []
+        idx = rng.choice(len(missions), min(n, len(missions)), replace=False)
         return [missions[i] for i in idx]
 
     loop = asyncio.get_event_loop()
@@ -471,39 +488,104 @@ async def sample_missions(
     return {"missions": missions}
 
 
+@app.get("/api/simulator/model_report")
+async def model_report():
+    """
+    Live per-planet production metrics, read from each model's meta.json.
+
+    Serving this rather than hardcoding numbers in the dashboard keeps the
+    report honest after every retrain — an earlier hardcoded LOTO table kept
+    displaying results for a model architecture that no longer exists.
+    """
+    router = _load_router()
+    out = []
+    for planet in ALL_PLANETS:
+        c = router._caches.get(planet)
+        if not c:
+            out.append({"planet": planet, "trained": False})
+            continue
+        meta = c["meta"]
+        at_op = meta.get("test", {}).get(f"{OPERATING_FRAC:.2f}", {})
+        recal = meta.get("recalibrated_test") or meta.get("test_at_operating_point", {})
+        out.append({
+            "planet": planet, "trained": True,
+            "auc": recal.get("auc", at_op.get("auc")),
+            "f1": recal.get("f1", at_op.get("f1")),
+            "recall": recal.get("recall"),
+            "precision": recal.get("precision"),
+            "mode_acc": at_op.get("mode_acc_on_failures"),
+            "threshold": meta.get("threshold"),
+            "n_missions": meta.get("n_missions"),
+            "downsample": meta.get("downsample"),
+            "has_assist": c.get("assist") is not None,
+        })
+    return {"operating_frac": OPERATING_FRAC, "planets": out}
+
+
 @app.get("/api/simulator/planet_info")
 async def planet_info():
-    """Return planet parameters for the mission creator UI."""
+    """
+    Planet parameters for the mission creator UI.
+
+    `nominal` is the Hohmann reference the creator's offsets are relative to,
+    and `sigma` is the 1-sigma dispersion the dataset sampled — useful as slider
+    scale. Dispersions are small (Venus dv_V sigma = 0.003 km/s), so an offset of
+    a few tenths of a km/s is tens of sigma out and will be flagged
+    out-of-distribution even though it propagates correctly.
+    """
     out = {}
     for name, data in PLANET_DATA.items():
-        out[name] = {
-            "a_au":             data["a_au"],
-            "hohmann_c3":       hohmann_c3(name),
+        entry = {
+            "a_au":              data["a_au"],
+            "hohmann_c3":        hohmann_c3(name),
             "optimal_phase_deg": optimal_phase_deg(name),
-            "soi_km":           data["soi_km"],
+            "soi_km":            data["soi_km"],
+            "model_trained":     _load_router().supports(name),
         }
+        try:
+            entry["nominal"] = nominal_for(name)
+            entry["sigma"] = dispersion_scale(name)
+        except Exception:                                        # noqa: BLE001
+            pass
+        out[name] = entry
     return out
 
 
 @app.post("/api/simulator/generate")
 async def generate_mission_endpoint(body: dict):
     """
-    Generate a synthetic interplanetary trajectory from user parameters.
-    Returns a mission_id (prefixed "gen_") that trajectory/stream endpoints accept.
+    Build a mission from user parameters and return a "gen_" mission_id that the
+    trajectory/stream endpoints accept.
+
+    Uses the same propagator and feature code as the training dataset
+    (src/api/mission_builder), so generated missions are in-distribution and the
+    per-planet models can score them. Parameters are offsets from the Hohmann
+    nominal; see /api/simulator/planet_info for nominal values and the 1-sigma
+    dispersions the dataset sampled.
     """
     global _gen_counter
-    target          = str(body.get("target", "mars")).lower()
-    c3              = float(body.get("c3", 10.0))
-    phase_ahead_deg = body.get("phase_ahead_deg", None)
-    earth_phase_deg = float(body.get("earth_phase_deg", 0.0))
+    target = str(body.get("target", "mars")).lower()
+
+    def _f(key: str, default: float = 0.0) -> float:
+        try:
+            return float(body.get(key, default))
+        except (TypeError, ValueError):
+            return default
 
     def _gen():
-        return generate_mission(target, c3,
-                                phase_ahead_deg=phase_ahead_deg,
-                                earth_phase_deg=earth_phase_deg)
+        return build_mission(
+            target,
+            dv_v_offset=_f("dv_v_offset"), dv_n_offset=_f("dv_n_offset"),
+            dv_b_offset=_f("dv_b_offset"), raan_offset=_f("raan_offset"),
+            aop_offset=_f("aop_offset"),   inc_offset=_f("inc_offset"),
+        )
 
-    loop   = asyncio.get_event_loop()
-    result = await loop.run_in_executor(_executor, _gen)
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(_executor, _gen)
+    except Exception as e:                                       # noqa: BLE001
+        return JSONResponse(status_code=400,
+                            content={"error": f"{type(e).__name__}: {e}"})
 
     _gen_counter += 1
     mission_id = f"gen_{_gen_counter}"
@@ -658,7 +740,6 @@ async def simulator_stream(
         def _load_mission():
             import pyarrow.dataset as ds_arrow
             import pandas as pd
-            from src.ml.regime_router import OUTER_PLANETS
             needed = list(set(FEATURE_COLS + ["mission_id", "label", "failure_type", "elapsed_secs", "target_body"]))
             dataset = ds_arrow.dataset(str(data_path), format="parquet")
             schema_names = dataset.schema.names
@@ -671,10 +752,10 @@ async def simulator_stream(
                 return None, None, None, None
             mission_df   = tbl.to_pandas().sort_values("elapsed_secs").reset_index(drop=True)
             target_body  = str(mission_df["target_body"].iloc[0]).lower() if "target_body" in mission_df.columns else "unknown"
-            # Match the downsample factor the regime model was trained with
-            ds = 50 if target_body in OUTER_PLANETS else 15
+            # Cadence must match training exactly; the model records its own factor.
+            ds = router.downsample_for_target(target_body)
             mission_df   = mission_df.iloc[::ds].reset_index(drop=True)
-            feats        = mission_df[FEATURE_COLS].values.astype(np.float32)
+            feats        = mission_df[FEATURE_COLS].values.astype(np.float64)
             label        = int(mission_df["label"].iloc[0])
             failure_type = str(mission_df["failure_type"].iloc[0]) if "failure_type" in mission_df.columns else "unknown"
             return feats, label, failure_type, target_body
@@ -696,7 +777,7 @@ async def simulator_stream(
     # Emit info header
     header = {"type": "info", "total_steps": total_steps, "true_label": true_label,
                "failure_type": failure_type, "mission_id": mission_id, "target_body": target_body,
-               "regime": router.regime_for(target_body),
+               "model": "per_planet", "model_available": router.supports(target_body),
                "calibrated_threshold": round(effective_threshold, 4)}
 
     async def generate():
@@ -704,33 +785,61 @@ async def simulator_stream(
 
         canceled = False
         final_prob = 0.0
+        pred_mode, pred_mode_name, mode_conf = 0, "unknown", 0.0
+        is_ood, ood_frac = False, 0.0
         stride = max(1, total_steps // 150)
+        # Models are trained on prefixes up to OPERATING_FRAC of mission length.
+        # Past that the input is out-of-distribution, so freeze the last valid
+        # prediction rather than feeding longer sequences (which previously drove
+        # every outer-planet mission to a false abort near 70%).
+        infer_cutoff = int(total_steps * OPERATING_FRAC)
 
         for i in range(0, total_steps):
             if i % stride != 0 and i != total_steps - 1:
                 continue
 
-            prob = await loop.run_in_executor(_executor, router.infer_step, features[:i + 1], target_body)
             elapsed_pct = round((i + 1) / total_steps, 4)
-            final_prob = prob
+
+            if i <= infer_cutoff:
+                res = await loop.run_in_executor(
+                    _executor, router.predict, features[:i + 1], target_body)
+                final_prob = res["p_fail"]
+                pred_mode = res["failure_mode"]
+                pred_mode_name = res["failure_mode_name"]
+                mode_conf = res["mode_confidence"]
+                is_ood = res["out_of_distribution"]
+                ood_frac = res["ood_fraction"]
 
             event = {"type": "step", "timestep": i + 1, "elapsed_pct": elapsed_pct,
-                     "probability": round(prob, 4)}
+                     "probability": round(final_prob, 4),
+                     "predicted_failure_mode": pred_mode_name,
+                     "mode_confidence": round(mode_conf, 4),
+                     "out_of_distribution": is_ood, "ood_fraction": ood_frac}
             yield f"data: {json.dumps(event)}\n\n"
             await asyncio.sleep(delay_s)
 
-            # Early-exit cancellation using calibrated per-target threshold
-            if prob >= effective_threshold and not canceled and elapsed_pct >= min_elapsed_pct:
+            # Abort check uses the last in-distribution probability (held constant
+            # past the operating point). `is_ood` rides along as an advisory flag
+            # for the UI rather than blocking the abort.
+            if (final_prob >= effective_threshold and not canceled
+                    and elapsed_pct >= min_elapsed_pct):
                 canceled = True
                 cancel_event = {"type": "cancel", "timestep": i + 1,
-                                "elapsed_pct": elapsed_pct, "probability": round(prob, 4),
-                                "threshold_used": round(effective_threshold, 4)}
+                                "elapsed_pct": elapsed_pct, "probability": round(final_prob, 4),
+                                "threshold_used": round(effective_threshold, 4),
+                                "predicted_failure_mode": pred_mode_name,
+                                "mode_confidence": round(mode_conf, 4)}
                 yield f"data: {json.dumps(cancel_event)}\n\n"
                 break
 
         was_correct = (canceled and true_label == 0) or (not canceled and true_label == 1)
+        mode_correct = (pred_mode_name == str(failure_type).lower()) if canceled else None
         done_event = {"type": "done", "true_label": true_label, "final_prob": round(final_prob, 4),
-                      "was_correct": was_correct, "canceled": canceled}
+                      "was_correct": was_correct, "canceled": canceled,
+                      "predicted_failure_mode": pred_mode_name,
+                      "actual_failure_type": failure_type,
+                      "mode_correct": mode_correct,
+                      "out_of_distribution": is_ood, "ood_fraction": ood_frac}
         yield f"data: {json.dumps(done_event)}\n\n"
 
     return StreamingResponse(

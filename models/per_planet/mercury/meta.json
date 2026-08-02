@@ -1,0 +1,85 @@
+{
+  "planet": "mercury",
+  "n_missions": 10000,
+  "seq_len": 102,
+  "n_features": 13,
+  "feature_cols": [
+    "rel_x",
+    "rel_y",
+    "rel_z",
+    "spec_energy",
+    "fpa_deg",
+    "norm_target_dist",
+    "radial_vel",
+    "vel_mag",
+    "earth_rmag",
+    "ecc",
+    "mu_ratio",
+    "soi_ratio",
+    "dist_ratio"
+  ],
+  "downsample": 2,
+  "target_steps": 100,
+  "operating_frac": 0.4,
+  "threshold": 0.4475,
+  "best_epoch": 43,
+  "best_val_auc": 0.9996,
+  "test": {
+    "0.10": {
+      "auc": 0.9985,
+      "f1_fail": 0.9925,
+      "mode_acc": 0.966,
+      "mode_acc_on_failures": 0.9663,
+      "p_fail_spread": 0.999978
+    },
+    "0.20": {
+      "auc": 0.9992,
+      "f1_fail": 0.9965,
+      "mode_acc": 0.9807,
+      "mode_acc_on_failures": 0.9796,
+      "p_fail_spread": 0.999979
+    },
+    "0.30": {
+      "auc": 0.9992,
+      "f1_fail": 0.9965,
+      "mode_acc": 0.9787,
+      "mode_acc_on_failures": 0.9787,
+      "p_fail_spread": 0.999979
+    },
+    "0.40": {
+      "auc": 0.9993,
+      "f1_fail": 0.996,
+      "mode_acc": 0.978,
+      "mode_acc_on_failures": 0.9778,
+      "p_fail_spread": 0.999979
+    }
+  },
+  "test_at_operating_point": {
+    "recall": 0.9982,
+    "precision": 0.9921,
+    "f1": 0.9951,
+    "tp": 1125,
+    "fp": 9,
+    "fn": 2,
+    "tn": 364
+  },
+  "mode_alpha": 0.5,
+  "failure_classes": {
+    "0": "success",
+    "1": "surface_impact",
+    "2": "orbit_too_high",
+    "3": "missed_target",
+    "4": "source_impact",
+    "5": "hyperbolic_flyby",
+    "6": "degenerate_orbit",
+    "7": "unknown"
+  },
+  "aux_dim": 8,
+  "threshold_selection": "plateau midpoint of failure-class F1 on val",
+  "recalibrated_test": {
+    "recall": 0.9989,
+    "precision": 0.9923,
+    "f1": 0.9956,
+    "auc": 0.9996
+  }
+}

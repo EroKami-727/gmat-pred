@@ -1,9 +1,9 @@
 {
-  "jupiter": 0.02,
-  "mars": 0.17,
-  "mercury": 0.36,
-  "neptune": 0.02,
-  "saturn": 0.02,
-  "uranus": 0.02,
-  "venus": 0.03
+  "jupiter": 0.015,
+  "mars": 0.165,
+  "mercury": 0.215,
+  "neptune": 0.005,
+  "saturn": 0.005,
+  "uranus": 0.015,
+  "venus": 0.025
 }

@@ -3,56 +3,56 @@
     "target": "jupiter",
     "regime": "outer",
     "n": 10000,
-    "auc": 0.0161,
-    "f1_at_optimal_thr": 0.9829,
-    "threshold": 0.02
+    "auc": 0.9864,
+    "f1_at_optimal_thr": 0.9916,
+    "threshold": 0.015
   },
   {
     "target": "mars",
     "regime": "inner",
     "n": 10000,
-    "auc": 0.0847,
-    "f1_at_optimal_thr": 0.7989,
-    "threshold": 0.17
+    "auc": 0.9153,
+    "f1_at_optimal_thr": 0.9061,
+    "threshold": 0.165
   },
   {
     "target": "mercury",
     "regime": "inner",
     "n": 10000,
-    "auc": 0.0952,
-    "f1_at_optimal_thr": 0.7321,
-    "threshold": 0.36
+    "auc": 0.9048,
+    "f1_at_optimal_thr": 0.8924,
+    "threshold": 0.215
   },
   {
     "target": "neptune",
     "regime": "outer",
     "n": 10000,
-    "auc": 0.0002,
-    "f1_at_optimal_thr": 0.9996,
-    "threshold": 0.02
+    "auc": 1.0,
+    "f1_at_optimal_thr": 0.9997,
+    "threshold": 0.005
   },
   {
     "target": "saturn",
     "regime": "outer",
     "n": 10000,
-    "auc": 0.0029,
-    "f1_at_optimal_thr": 0.9966,
-    "threshold": 0.02
+    "auc": 0.9972,
+    "f1_at_optimal_thr": 0.9983,
+    "threshold": 0.005
   },
   {
     "target": "uranus",
     "regime": "outer",
     "n": 10000,
-    "auc": 0.0168,
-    "f1_at_optimal_thr": 0.9832,
-    "threshold": 0.02
+    "auc": 0.9836,
+    "f1_at_optimal_thr": 0.9912,
+    "threshold": 0.015
   },
   {
     "target": "venus",
     "regime": "inner",
     "n": 10000,
-    "auc": 0.0156,
-    "f1_at_optimal_thr": 0.9588,
-    "threshold": 0.03
+    "auc": 0.9844,
+    "f1_at_optimal_thr": 0.9784,
+    "threshold": 0.025
   }
 ]

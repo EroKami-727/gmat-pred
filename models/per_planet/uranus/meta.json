@@ -1,0 +1,85 @@
+{
+  "planet": "uranus",
+  "n_missions": 10000,
+  "seq_len": 101,
+  "n_features": 13,
+  "feature_cols": [
+    "rel_x",
+    "rel_y",
+    "rel_z",
+    "spec_energy",
+    "fpa_deg",
+    "norm_target_dist",
+    "radial_vel",
+    "vel_mag",
+    "earth_rmag",
+    "ecc",
+    "mu_ratio",
+    "soi_ratio",
+    "dist_ratio"
+  ],
+  "downsample": 112,
+  "target_steps": 100,
+  "operating_frac": 0.4,
+  "threshold": 0.52,
+  "best_epoch": 47,
+  "best_val_auc": 0.9999,
+  "test": {
+    "0.10": {
+      "auc": 0.9998,
+      "f1_fail": 0.9938,
+      "mode_acc": 0.988,
+      "mode_acc_on_failures": 0.9816,
+      "p_fail_spread": 0.921177
+    },
+    "0.20": {
+      "auc": 0.9999,
+      "f1_fail": 0.9938,
+      "mode_acc": 0.9867,
+      "mode_acc_on_failures": 0.9795,
+      "p_fail_spread": 0.921284
+    },
+    "0.30": {
+      "auc": 0.9999,
+      "f1_fail": 0.9938,
+      "mode_acc": 0.9847,
+      "mode_acc_on_failures": 0.9764,
+      "p_fail_spread": 0.921344
+    },
+    "0.40": {
+      "auc": 1.0,
+      "f1_fail": 0.9938,
+      "mode_acc": 0.9887,
+      "mode_acc_on_failures": 0.9826,
+      "p_fail_spread": 0.921363
+    }
+  },
+  "test_at_operating_point": {
+    "recall": 0.9877,
+    "precision": 1.0,
+    "f1": 0.9938,
+    "tp": 964,
+    "fp": 0,
+    "fn": 12,
+    "tn": 524
+  },
+  "mode_alpha": 0.5,
+  "failure_classes": {
+    "0": "success",
+    "1": "surface_impact",
+    "2": "orbit_too_high",
+    "3": "missed_target",
+    "4": "source_impact",
+    "5": "hyperbolic_flyby",
+    "6": "degenerate_orbit",
+    "7": "unknown"
+  },
+  "aux_dim": 8,
+  "threshold_selection": "plateau midpoint of failure-class F1 on val",
+  "recalibrated_test": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0,
+    "auc": 1.0
+  }
+}

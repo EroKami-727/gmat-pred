@@ -146,12 +146,14 @@ class TrajectoryTransformer(nn.Module):
         task: str = "binary",
         use_cls_token: bool = True,
         use_pos_encoding: bool = True,
+        aux_dim: int | None = None,
     ):
         super().__init__()
         self.task = task
         self.d_model = d_model
         self.use_cls_token = use_cls_token
         self.use_pos_encoding = use_pos_encoding
+        self.aux_dim = aux_dim
 
         # Project raw features into model dimension
         self.embedding = nn.Linear(input_dim, d_model)
@@ -181,6 +183,17 @@ class TrajectoryTransformer(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(d_model // 2, output_dim)
         )
+
+        # Optional second head predicting failure MODE (how it fails), trained
+        # jointly with the binary outcome head. Adds no parameters when unused,
+        # so existing single-head checkpoints still load with strict=True.
+        if aux_dim:
+            self.fc_aux = nn.Sequential(
+                nn.Linear(d_model, d_model // 2),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(d_model // 2, aux_dim)
+            )
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
         """
@@ -224,6 +237,44 @@ class TrajectoryTransformer(nn.Module):
         if self.task in ["binary", "regression"]:
             return out.squeeze(1)
         return out
+
+    def encode(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+        """Shared trunk → pooled (batch, d_model) representation."""
+        B = x.size(0)
+        x = self.embedding(x) * math.sqrt(self.d_model)
+
+        if self.use_cls_token:
+            cls = self.cls_token.expand(B, 1, self.d_model)
+            x = torch.cat([cls, x], dim=1)
+            if self.use_pos_encoding:
+                x = self.pos_encoder(x)
+            if mask is not None:
+                cls_mask = torch.zeros(B, 1, dtype=torch.bool, device=mask.device)
+                mask = torch.cat([cls_mask, mask], dim=1)
+        else:
+            if self.use_pos_encoding:
+                x = self.pos_encoder(x)
+
+        output = self.transformer_encoder(x, src_key_padding_mask=mask)
+
+        if self.use_cls_token:
+            return output[:, 0, :]
+        if mask is not None:
+            valid = (~mask).unsqueeze(-1).float()
+            return (output * valid).sum(dim=1) / valid.sum(dim=1).clamp(min=1)
+        return output.mean(dim=1)
+
+    def forward_multitask(self, x: torch.Tensor, mask: torch.Tensor = None):
+        """
+        Returns (outcome_logit, failure_mode_logits).
+        outcome_logit      : (batch,)      — P(success) after sigmoid
+        failure_mode_logits: (batch, aux_dim)
+        """
+        pooled = self.encode(x, mask)
+        main = self.fc(pooled).squeeze(1)
+        if not self.aux_dim:
+            return main, None
+        return main, self.fc_aux(pooled)
 
     def forward_with_attention(
         self, x: torch.Tensor, mask: torch.Tensor = None
