@@ -8,7 +8,10 @@
 > (feature-shift error analysis, target-upweighting experiment).
 > See [`README.md`](README.md) for the generation map.
 
-Read this first before touching any code.
+Pipeline orientation. Much of it still holds — the generator, the feature
+pipeline and the cadence facts are unchanged — but the model and result sections
+describe G2. For the current entry point read [`README.md`](README.md), then
+[`RESEARCH_LEDGER.md`](RESEARCH_LEDGER.md).
 
 ## What it does
 
