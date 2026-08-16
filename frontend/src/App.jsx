@@ -1,13 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import LandingPage from './LandingPage'
 import { API } from './lib/api'
-import Overview from './panels/Overview'
-import Training from './panels/Training'
-import Ablation from './panels/Ablation'
-import Dataset from './panels/Dataset'
-import Simulator from './panels/Simulator'
-import Experiments from './panels/Experiments'
-import Report from './panels/Report'
+
+// Panels are lazy so the landing page — which is what a first-time visitor
+// actually sees — does not pull Recharts and all seven dashboards down with it.
+// The dashboard is behind a click, and only one panel is mounted at a time.
+const Overview    = lazy(() => import('./panels/Overview'))
+const Training    = lazy(() => import('./panels/Training'))
+const Ablation    = lazy(() => import('./panels/Ablation'))
+const Dataset     = lazy(() => import('./panels/Dataset'))
+const Simulator   = lazy(() => import('./panels/Simulator'))
+const Experiments = lazy(() => import('./panels/Experiments'))
+const Report      = lazy(() => import('./panels/Report'))
 
 const TABS = ['REPORT', 'OVERVIEW', 'SIMULATOR', 'TRAINING', 'ABLATION', 'EXPERIMENTS', 'DATASET']
 const PANELS = { REPORT: Report, OVERVIEW: Overview, SIMULATOR: Simulator, TRAINING: Training, ABLATION: Ablation, EXPERIMENTS: Experiments, DATASET: Dataset }
@@ -176,6 +180,17 @@ function TabBar({ active, setActive }) {
   )
 }
 
+function PanelLoading() {
+  return (
+    <div style={{
+      padding: '48px 28px', color: 'var(--text-dim)', fontFamily: 'var(--mono)',
+      fontSize: '12px', letterSpacing: '0.1em',
+    }}>
+      LOADING PANEL…
+    </div>
+  )
+}
+
 export default function App() {
   const [showDashboard, setShowDashboard] = useState(false)
   const [active, setActive] = useState('REPORT')
@@ -190,7 +205,9 @@ export default function App() {
       <Header onBack={() => setShowDashboard(false)} />
       <TabBar active={active} setActive={setActive} />
       <main style={{ flex: 1, overflowY: 'auto' }}>
-        <Panel />
+        <Suspense fallback={<PanelLoading />}>
+          <Panel />
+        </Suspense>
       </main>
     </div>
   )
