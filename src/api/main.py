@@ -43,8 +43,9 @@ from src.ml.model import TrajectoryLSTM, TrajectoryTransformer
 from src.ml.planet_router import PlanetRouter
 # The API surfaces every target it can serve, Moon included; the
 # seven-target study set is a reporting concept, not a serving one.
-from src.ml.planet_config import SERVING_TARGETS as ALL_PLANETS, OPERATING_FRAC
+from src.ml.planet_config import SERVING_TARGETS, SERVING_TARGETS as ALL_PLANETS, OPERATING_FRAC
 from src.api.trajectory_gen import hohmann_c3, optimal_phase_deg, PLANET_DATA
+from src.data_collection.generator import PLANET_REGISTRY
 from src.paths import missions_parquet
 from src.api.mission_builder import build_mission, nominal_for, dispersion_scale
 
@@ -574,14 +575,40 @@ async def planet_info():
     out-of-distribution even though it propagates correctly.
     """
     out = {}
-    for name, data in PLANET_DATA.items():
-        entry = {
-            "a_au":              data["a_au"],
-            "hohmann_c3":        hohmann_c3(name),
-            "optimal_phase_deg": optimal_phase_deg(name),
-            "soi_km":            data["soi_km"],
-            "model_trained":     _load_router().supports(name),
-        }
+    router = _load_router()
+
+    # Iterate the serving set, not PLANET_DATA. PLANET_DATA holds the
+    # heliocentric transfer targets only, so Moon was silently missing from this
+    # response — while build_mission("moon") works, the Moon model is trained
+    # (test F1 0.9888) and the simulator's planet dropdown offers it. The
+    # creator UI is driven by this endpoint, so selecting Moon gave no nominal
+    # and no slider scale for a mission the backend can build perfectly well.
+    for name in SERVING_TARGETS:
+        data = PLANET_DATA.get(name)
+        if data is not None:
+            entry = {
+                "frame":             "heliocentric",
+                "a_au":              data["a_au"],
+                "hohmann_c3":        hohmann_c3(name),
+                "optimal_phase_deg": optimal_phase_deg(name),
+                "soi_km":            data["soi_km"],
+            }
+        else:
+            # Moon is an Earth-centric transfer: heliocentric semi-major axis,
+            # Hohmann C3 and departure phasing are not defined for it. Report
+            # that explicitly rather than omitting the target or inventing
+            # values the UI would render as if they meant something.
+            reg = PLANET_REGISTRY.get(name, {})
+            entry = {
+                "frame":             "earth-centric",
+                "a_au":              None,
+                "hohmann_c3":        None,
+                "optimal_phase_deg": None,
+                "soi_km":            reg.get("soi"),
+                "orbit_radius_km":   reg.get("orbit_radius"),
+            }
+
+        entry["model_trained"] = router.supports(name)
         try:
             entry["nominal"] = nominal_for(name)
             entry["sigma"] = dispersion_scale(name)
