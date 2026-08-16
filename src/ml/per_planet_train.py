@@ -43,6 +43,7 @@ from sklearn.metrics import f1_score, roc_auc_score
 
 from src.ml.dataset import FEATURE_COLS
 from src.ml.model import TrajectoryTransformer
+from src.ml.splits import train_val_test
 from src.ml.planet_config import (
     FAILURE_NAMES, N_FAILURE_CLASSES, OPERATING_FRAC, SERVING_TARGETS,
     TARGET_STEPS, downsample_for,
@@ -168,10 +169,9 @@ def train_planet(planet: str, data_dir: Path, out_dir: Path,
     X, y, ft, lengths = d["X"], d["y"], d["failure_type"], d["lengths"]
     N, L, F = X.shape
 
-    rng = np.random.default_rng(seed)
-    perm = rng.permutation(N)
-    n_tr, n_va = int(0.70 * N), int(0.15 * N)
-    tr, va, te = perm[:n_tr], perm[n_tr:n_tr + n_va], perm[n_tr + n_va:]
+    # Canonical partition — see src/ml/splits.py. Do not inline this arithmetic
+    # again; a second copy of it is what contaminated the pruning economics.
+    tr, va, te = train_val_test(N, seed)
 
     # Stats fitted on TRAIN ONLY — no leakage into val/test.
     mu, sd = fit_timestep_stats(X[tr], lengths[tr])

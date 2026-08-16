@@ -25,6 +25,7 @@ from pathlib import Path
 from sklearn.metrics import roc_auc_score
 
 from src.ml.planet_config import FAILURE_NAMES, OPERATING_FRAC, PLANETS
+from src.ml.splits import test_indices
 from src.ml.planet_router import PlanetRouter
 
 DATA_DIR = Path("data/per_planet")
@@ -33,9 +34,14 @@ SEED = 42
 
 
 def test_split_indices(n: int, seed: int = SEED) -> np.ndarray:
-    """Reproduce per_planet_train's 70/15/15 split — must stay in sync with it."""
-    perm = np.random.default_rng(seed).permutation(n)
-    return perm[int(0.70 * n) + int(0.15 * n):]
+    """
+    The held-out test split.
+
+    This used to reimplement per_planet_train's arithmetic with a comment saying
+    it "must stay in sync" — which it did, while prune_economics.py's third copy
+    did not. Both now call the one definition in src/ml/splits.py.
+    """
+    return test_indices(n, seed)
 
 
 def batched_predict(router, planet, X, lengths, idx, frac):

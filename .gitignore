@@ -57,8 +57,18 @@ trajectory.txt
 models/**/*.pt
 models/**/*.pkl
 
-# Generated reports
-reports/
+# Generated reports.
+#
+# The heavy artifacts (figures, checkpoints) stay out, but the RESULT files do
+# not: every number in docs/ and in the paper comes from one of these JSON/TeX
+# tables, and until now they were untracked, so the claims had nothing committed
+# backing them and could not be diffed when a pipeline re-run changed them.
+# They total well under a megabyte.
+reports/**
+!reports/**/
+!reports/**/*.json
+!reports/**/*.md
+!reports/**/*.tex
 
 # Parquet split temps
 data/_*_split.parquet

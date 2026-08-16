@@ -1,0 +1,1114 @@
+[
+  {
+    "variable": "TOI_V",
+    "heldout_bin": 0,
+    "bins": 5,
+    "train": {
+      "missions": 64000,
+      "success": 25297,
+      "failure": 38703,
+      "success_rate": 0.395265625
+    },
+    "test": {
+      "missions": 16000,
+      "success": 271,
+      "failure": 15729,
+      "success_rate": 0.0169375
+    },
+    "test_by_target": {
+      "jupiter": {
+        "missions": 2000,
+        "success": 1,
+        "failure": 1999,
+        "success_rate": 0.0005
+      },
+      "mars": {
+        "missions": 2000,
+        "success": 28,
+        "failure": 1972,
+        "success_rate": 0.014
+      },
+      "mercury": {
+        "missions": 2000,
+        "success": 2,
+        "failure": 1998,
+        "success_rate": 0.001
+      },
+      "moon": {
+        "missions": 2000,
+        "success": 240,
+        "failure": 1760,
+        "success_rate": 0.12
+      },
+      "neptune": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "saturn": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "uranus": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "venus": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      }
+    },
+    "majority_class": {
+      "acc": 0.9830625,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.9968125,
+      "f1": 0.9043151969981238,
+      "auc": 0.9982403762622406,
+      "train_tuned_threshold": 0.44976603984832764,
+      "train_f1_at_threshold": 0.9960705329463104,
+      "test_at_train_threshold": {
+        "acc": 0.9961875,
+        "f1": 0.8888888888888888,
+        "auc": 0.9982403762622406
+      },
+      "test_probability_summary": {
+        "min": 9.139813300862443e-06,
+        "p25": 0.00017179148562718183,
+        "median": 0.0003386598255019635,
+        "p75": 0.0007628342136740685,
+        "max": 0.9988265633583069
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.9700625,
+      "f1": 0.06990291262135923,
+      "auc": 0.9027507889040363,
+      "train_tuned_threshold": 0.5892269158363341,
+      "train_f1_at_threshold": 0.9861309807661739,
+      "test_at_train_threshold": {
+        "acc": 0.973875,
+        "f1": 0.018779342723004695,
+        "auc": 0.9027507889040363
+      },
+      "test_probability_summary": {
+        "min": 7.357077993219718e-05,
+        "p25": 0.0004196276713628322,
+        "median": 0.001503446837887168,
+        "p75": 0.00793433841317892,
+        "max": 0.9324712157249451
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "variable": "TOI_V",
+    "heldout_bin": 1,
+    "bins": 5,
+    "train": {
+      "missions": 64000,
+      "success": 20410,
+      "failure": 43590,
+      "success_rate": 0.31890625
+    },
+    "test": {
+      "missions": 16000,
+      "success": 5158,
+      "failure": 10842,
+      "success_rate": 0.322375
+    },
+    "test_by_target": {
+      "jupiter": {
+        "missions": 2000,
+        "success": 770,
+        "failure": 1230,
+        "success_rate": 0.385
+      },
+      "mars": {
+        "missions": 2000,
+        "success": 614,
+        "failure": 1386,
+        "success_rate": 0.307
+      },
+      "mercury": {
+        "missions": 2000,
+        "success": 13,
+        "failure": 1987,
+        "success_rate": 0.0065
+      },
+      "moon": {
+        "missions": 2000,
+        "success": 812,
+        "failure": 1188,
+        "success_rate": 0.406
+      },
+      "neptune": {
+        "missions": 2000,
+        "success": 759,
+        "failure": 1241,
+        "success_rate": 0.3795
+      },
+      "saturn": {
+        "missions": 2000,
+        "success": 759,
+        "failure": 1241,
+        "success_rate": 0.3795
+      },
+      "uranus": {
+        "missions": 2000,
+        "success": 648,
+        "failure": 1352,
+        "success_rate": 0.324
+      },
+      "venus": {
+        "missions": 2000,
+        "success": 783,
+        "failure": 1217,
+        "success_rate": 0.3915
+      }
+    },
+    "majority_class": {
+      "acc": 0.677625,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.983875,
+      "f1": 0.9754051477597712,
+      "auc": 0.9895387743254855,
+      "train_tuned_threshold": 0.7141838010874663,
+      "train_f1_at_threshold": 0.9958220693044975,
+      "test_at_train_threshold": {
+        "acc": 0.9845,
+        "f1": 0.9762178749520521,
+        "auc": 0.9895387743254855
+      },
+      "test_probability_summary": {
+        "min": 7.649323379155248e-06,
+        "p25": 0.000282502849586308,
+        "median": 0.0009226776310242712,
+        "p75": 0.9982558488845825,
+        "max": 0.9999219179153442
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.934625,
+      "f1": 0.8949799196787148,
+      "auc": 0.9811529992756474,
+      "train_tuned_threshold": 0.5830361843109131,
+      "train_f1_at_threshold": 0.9837782038047486,
+      "test_at_train_threshold": {
+        "acc": 0.9321875,
+        "f1": 0.888040449901971,
+        "auc": 0.9811529992756474
+      },
+      "test_probability_summary": {
+        "min": 2.8715876396745443e-05,
+        "p25": 0.0004143879923503846,
+        "median": 0.006933491677045822,
+        "p75": 0.9509202837944031,
+        "max": 0.9998365640640259
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "variable": "TOI_V",
+    "heldout_bin": 2,
+    "bins": 5,
+    "train": {
+      "missions": 64000,
+      "success": 11045,
+      "failure": 52955,
+      "success_rate": 0.172578125
+    },
+    "test": {
+      "missions": 16000,
+      "success": 14523,
+      "failure": 1477,
+      "success_rate": 0.9076875
+    },
+    "test_by_target": {
+      "jupiter": {
+        "missions": 2000,
+        "success": 1995,
+        "failure": 5,
+        "success_rate": 0.9975
+      },
+      "mars": {
+        "missions": 2000,
+        "success": 1467,
+        "failure": 533,
+        "success_rate": 0.7335
+      },
+      "mercury": {
+        "missions": 2000,
+        "success": 1383,
+        "failure": 617,
+        "success_rate": 0.6915
+      },
+      "moon": {
+        "missions": 2000,
+        "success": 1690,
+        "failure": 310,
+        "success_rate": 0.845
+      },
+      "neptune": {
+        "missions": 2000,
+        "success": 2000,
+        "failure": 0,
+        "success_rate": 1.0
+      },
+      "saturn": {
+        "missions": 2000,
+        "success": 2000,
+        "failure": 0,
+        "success_rate": 1.0
+      },
+      "uranus": {
+        "missions": 2000,
+        "success": 1999,
+        "failure": 1,
+        "success_rate": 0.9995
+      },
+      "venus": {
+        "missions": 2000,
+        "success": 1989,
+        "failure": 11,
+        "success_rate": 0.9945
+      }
+    },
+    "majority_class": {
+      "acc": 0.0923125,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.9704375,
+      "f1": 0.9838406614054866,
+      "auc": 0.9916041936794768,
+      "train_tuned_threshold": 0.6314705991744951,
+      "train_f1_at_threshold": 0.9925470888477348,
+      "test_at_train_threshold": {
+        "acc": 0.97025,
+        "f1": 0.9837342810278841,
+        "auc": 0.9916041936794768
+      },
+      "test_probability_summary": {
+        "min": 5.449877426144667e-05,
+        "p25": 0.9981715679168701,
+        "median": 0.9992753863334656,
+        "p75": 0.9996894001960754,
+        "max": 0.9998376369476318
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.924875,
+      "f1": 0.9597238976008577,
+      "auc": 0.9117052488031616,
+      "train_tuned_threshold": 0.732344388961792,
+      "train_f1_at_threshold": 0.9609601449275362,
+      "test_at_train_threshold": {
+        "acc": 0.9250625,
+        "f1": 0.9597880403796492,
+        "auc": 0.9117052488031616
+      },
+      "test_probability_summary": {
+        "min": 0.00024826228036545217,
+        "p25": 0.9800540804862976,
+        "median": 0.9974973797798157,
+        "p75": 0.999416708946228,
+        "max": 0.9995825886726379
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "variable": "TOI_V",
+    "heldout_bin": 3,
+    "bins": 5,
+    "train": {
+      "missions": 64000,
+      "success": 20051,
+      "failure": 43949,
+      "success_rate": 0.313296875
+    },
+    "test": {
+      "missions": 16000,
+      "success": 5517,
+      "failure": 10483,
+      "success_rate": 0.3448125
+    },
+    "test_by_target": {
+      "jupiter": {
+        "missions": 2000,
+        "success": 719,
+        "failure": 1281,
+        "success_rate": 0.3595
+      },
+      "mars": {
+        "missions": 2000,
+        "success": 492,
+        "failure": 1508,
+        "success_rate": 0.246
+      },
+      "mercury": {
+        "missions": 2000,
+        "success": 750,
+        "failure": 1250,
+        "success_rate": 0.375
+      },
+      "moon": {
+        "missions": 2000,
+        "success": 736,
+        "failure": 1264,
+        "success_rate": 0.368
+      },
+      "neptune": {
+        "missions": 2000,
+        "success": 741,
+        "failure": 1259,
+        "success_rate": 0.3705
+      },
+      "saturn": {
+        "missions": 2000,
+        "success": 742,
+        "failure": 1258,
+        "success_rate": 0.371
+      },
+      "uranus": {
+        "missions": 2000,
+        "success": 742,
+        "failure": 1258,
+        "success_rate": 0.371
+      },
+      "venus": {
+        "missions": 2000,
+        "success": 595,
+        "failure": 1405,
+        "success_rate": 0.2975
+      }
+    },
+    "majority_class": {
+      "acc": 0.6551875,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.9763125,
+      "f1": 0.9665519371635337,
+      "auc": 0.9949590393907216,
+      "train_tuned_threshold": 0.750475532141596,
+      "train_f1_at_threshold": 0.9970010496326286,
+      "test_at_train_threshold": {
+        "acc": 0.9810625,
+        "f1": 0.9730018711574445,
+        "auc": 0.9949590393907216
+      },
+      "test_probability_summary": {
+        "min": 4.326076123106759e-06,
+        "p25": 0.000147728540468961,
+        "median": 0.006983037106692791,
+        "p75": 0.9991589784622192,
+        "max": 0.9998965263366699
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.949375,
+      "f1": 0.9304601648351648,
+      "auc": 0.9851174582682708,
+      "train_tuned_threshold": 0.574356125268069,
+      "train_f1_at_threshold": 0.9814564902284201,
+      "test_at_train_threshold": {
+        "acc": 0.951625,
+        "f1": 0.9330565646081993,
+        "auc": 0.9851174582682708
+      },
+      "test_probability_summary": {
+        "min": 3.0886236345395446e-05,
+        "p25": 0.0005124412709847093,
+        "median": 0.012279074639081955,
+        "p75": 0.9900984764099121,
+        "max": 0.9995737671852112
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "variable": "TOI_V",
+    "heldout_bin": 4,
+    "bins": 5,
+    "train": {
+      "missions": 64000,
+      "success": 25469,
+      "failure": 38531,
+      "success_rate": 0.397953125
+    },
+    "test": {
+      "missions": 16000,
+      "success": 99,
+      "failure": 15901,
+      "success_rate": 0.0061875
+    },
+    "test_by_target": {
+      "jupiter": {
+        "missions": 2000,
+        "success": 2,
+        "failure": 1998,
+        "success_rate": 0.001
+      },
+      "mars": {
+        "missions": 2000,
+        "success": 27,
+        "failure": 1973,
+        "success_rate": 0.0135
+      },
+      "mercury": {
+        "missions": 2000,
+        "success": 7,
+        "failure": 1993,
+        "success_rate": 0.0035
+      },
+      "moon": {
+        "missions": 2000,
+        "success": 54,
+        "failure": 1946,
+        "success_rate": 0.027
+      },
+      "neptune": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "saturn": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "uranus": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "venus": {
+        "missions": 2000,
+        "success": 9,
+        "failure": 1991,
+        "success_rate": 0.0045
+      }
+    },
+    "majority_class": {
+      "acc": 0.9938125,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.99675,
+      "f1": 0.675,
+      "auc": 0.9779713365336911,
+      "train_tuned_threshold": 0.7108440666848977,
+      "train_f1_at_threshold": 0.9954149202038688,
+      "test_at_train_threshold": {
+        "acc": 0.996375,
+        "f1": 0.5972222222222222,
+        "auc": 0.9779713365336911
+      },
+      "test_probability_summary": {
+        "min": 2.3137556127039716e-05,
+        "p25": 0.00012892359518446028,
+        "median": 0.00028835589182563126,
+        "p75": 0.0005005867569707334,
+        "max": 0.9987577199935913
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.9923125,
+      "f1": 0.0,
+      "auc": 0.8841804625717589,
+      "train_tuned_threshold": 0.500126156942411,
+      "train_f1_at_threshold": 0.9823877836157191,
+      "test_at_train_threshold": {
+        "acc": 0.9923125,
+        "f1": 0.0,
+        "auc": 0.8841804625717589
+      },
+      "test_probability_summary": {
+        "min": 5.514625081559643e-05,
+        "p25": 0.0003792480565607548,
+        "median": 0.001194414566271007,
+        "p75": 0.0045507196336984634,
+        "max": 0.8086510300636292
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "variable": "AOP",
+    "heldout_bin": 0,
+    "bins": 5,
+    "train": {
+      "missions": 64000,
+      "success": 25421,
+      "failure": 38579,
+      "success_rate": 0.397203125
+    },
+    "test": {
+      "missions": 16000,
+      "success": 147,
+      "failure": 15853,
+      "success_rate": 0.0091875
+    },
+    "test_by_target": {
+      "jupiter": {
+        "missions": 2000,
+        "success": 2,
+        "failure": 1998,
+        "success_rate": 0.001
+      },
+      "mars": {
+        "missions": 2000,
+        "success": 8,
+        "failure": 1992,
+        "success_rate": 0.004
+      },
+      "mercury": {
+        "missions": 2000,
+        "success": 8,
+        "failure": 1992,
+        "success_rate": 0.004
+      },
+      "moon": {
+        "missions": 2000,
+        "success": 113,
+        "failure": 1887,
+        "success_rate": 0.0565
+      },
+      "neptune": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "saturn": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "uranus": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "venus": {
+        "missions": 2000,
+        "success": 16,
+        "failure": 1984,
+        "success_rate": 0.008
+      }
+    },
+    "majority_class": {
+      "acc": 0.9908125,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.9971875,
+      "f1": 0.8375451263537906,
+      "auc": 0.986989951471663,
+      "train_tuned_threshold": 0.6745244264602661,
+      "train_f1_at_threshold": 0.9962957124842371,
+      "test_at_train_threshold": {
+        "acc": 0.9968125,
+        "f1": 0.8075471698113208,
+        "auc": 0.986989951471663
+      },
+      "test_probability_summary": {
+        "min": 8.07883043307811e-06,
+        "p25": 0.0001660991256358102,
+        "median": 0.0002940103877335787,
+        "p75": 0.0005327236722223461,
+        "max": 0.9987775683403015
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.98925,
+      "f1": 0.054945054945054944,
+      "auc": 0.9295289932032865,
+      "train_tuned_threshold": 0.5101768125729128,
+      "train_f1_at_threshold": 0.9844590202682739,
+      "test_at_train_threshold": {
+        "acc": 0.9894375,
+        "f1": 0.055865921787709494,
+        "auc": 0.9295289932032865
+      },
+      "test_probability_summary": {
+        "min": 2.406012572464533e-05,
+        "p25": 0.00031348783522844315,
+        "median": 0.0007432355778291821,
+        "p75": 0.006039605010300875,
+        "max": 0.8887532949447632
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "variable": "AOP",
+    "heldout_bin": 1,
+    "bins": 5,
+    "train": {
+      "missions": 55888,
+      "success": 11816,
+      "failure": 44072,
+      "success_rate": 0.21142284569138275
+    },
+    "test": {
+      "missions": 24112,
+      "success": 13752,
+      "failure": 10360,
+      "success_rate": 0.5703384207033843
+    },
+    "test_by_target": {
+      "jupiter": {
+        "missions": 2000,
+        "success": 741,
+        "failure": 1259,
+        "success_rate": 0.3705
+      },
+      "mars": {
+        "missions": 2000,
+        "success": 625,
+        "failure": 1375,
+        "success_rate": 0.3125
+      },
+      "mercury": {
+        "missions": 2000,
+        "success": 419,
+        "failure": 1581,
+        "success_rate": 0.2095
+      },
+      "moon": {
+        "missions": 2000,
+        "success": 806,
+        "failure": 1194,
+        "success_rate": 0.403
+      },
+      "neptune": {
+        "missions": 4704,
+        "success": 3500,
+        "failure": 1204,
+        "success_rate": 0.7440476190476191
+      },
+      "saturn": {
+        "missions": 4704,
+        "success": 3501,
+        "failure": 1203,
+        "success_rate": 0.7442602040816326
+      },
+      "uranus": {
+        "missions": 4704,
+        "success": 3389,
+        "failure": 1315,
+        "success_rate": 0.7204506802721088
+      },
+      "venus": {
+        "missions": 2000,
+        "success": 771,
+        "failure": 1229,
+        "success_rate": 0.3855
+      }
+    },
+    "majority_class": {
+      "acc": 0.4296615792966158,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.5639515593895156,
+      "f1": 0.387724202189611,
+      "auc": 0.8852459684347773,
+      "train_tuned_threshold": 0.5238960557995421,
+      "train_f1_at_threshold": 0.9925788497217068,
+      "test_at_train_threshold": {
+        "acc": 0.5639515593895156,
+        "f1": 0.38751019457066294,
+        "auc": 0.8852459684347773
+      },
+      "test_probability_summary": {
+        "min": 2.5708384328027023e-06,
+        "p25": 0.0003845051978714764,
+        "median": 0.002538581844419241,
+        "p75": 0.15364964306354523,
+        "max": 0.9998086094856262
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.5424270072992701,
+      "f1": 0.3740852101889147,
+      "auc": 0.4397068920547324,
+      "train_tuned_threshold": 0.723580002784729,
+      "train_f1_at_threshold": 0.9700925807414992,
+      "test_at_train_threshold": {
+        "acc": 0.5489382879893829,
+        "f1": 0.3709658762290341,
+        "auc": 0.4397068920547324
+      },
+      "test_probability_summary": {
+        "min": 7.818534868420102e-06,
+        "p25": 2.458081507938914e-05,
+        "median": 0.0001604925491847098,
+        "p75": 0.012511594220995903,
+        "max": 0.9990437626838684
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "variable": "AOP",
+    "heldout_bin": 2,
+    "bins": 5,
+    "train": {
+      "missions": 66112,
+      "success": 17250,
+      "failure": 48862,
+      "success_rate": 0.26092086156824784
+    },
+    "test": {
+      "missions": 13888,
+      "success": 8318,
+      "failure": 5570,
+      "success_rate": 0.598934331797235
+    },
+    "test_by_target": {
+      "jupiter": {
+        "missions": 2000,
+        "success": 1997,
+        "failure": 3,
+        "success_rate": 0.9985
+      },
+      "mars": {
+        "missions": 2000,
+        "success": 1591,
+        "failure": 409,
+        "success_rate": 0.7955
+      },
+      "mercury": {
+        "missions": 2000,
+        "success": 1223,
+        "failure": 777,
+        "success_rate": 0.6115
+      },
+      "moon": {
+        "missions": 2000,
+        "success": 1559,
+        "failure": 441,
+        "success_rate": 0.7795
+      },
+      "neptune": {
+        "missions": 1296,
+        "success": 0,
+        "failure": 1296,
+        "success_rate": 0.0
+      },
+      "saturn": {
+        "missions": 1296,
+        "success": 0,
+        "failure": 1296,
+        "success_rate": 0.0
+      },
+      "uranus": {
+        "missions": 1296,
+        "success": 0,
+        "failure": 1296,
+        "success_rate": 0.0
+      },
+      "venus": {
+        "missions": 2000,
+        "success": 1948,
+        "failure": 52,
+        "success_rate": 0.974
+      }
+    },
+    "majority_class": {
+      "acc": 0.40106566820276496,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.9884072580645161,
+      "f1": 0.9904000954027786,
+      "auc": 0.9995796250738702,
+      "train_tuned_threshold": 0.4731302148645585,
+      "train_f1_at_threshold": 0.9938150289017341,
+      "test_at_train_threshold": {
+        "acc": 0.9877592165898618,
+        "f1": 0.9898713060057197,
+        "auc": 0.9995796250738702
+      },
+      "test_probability_summary": {
+        "min": 1.3132016647432465e-05,
+        "p25": 0.00039952032966539264,
+        "median": 0.9967005848884583,
+        "p75": 0.9992297887802124,
+        "max": 0.9996647834777832
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.9632776497695853,
+      "f1": 0.97010550996483,
+      "auc": 0.9940496114286552,
+      "train_tuned_threshold": 0.5812894105911255,
+      "train_f1_at_threshold": 0.9767804990891479,
+      "test_at_train_threshold": {
+        "acc": 0.9643577188940092,
+        "f1": 0.970832596782747,
+        "auc": 0.9940496114286552
+      },
+      "test_probability_summary": {
+        "min": 3.551646659616381e-05,
+        "p25": 0.0027046133764088154,
+        "median": 0.9650848507881165,
+        "p75": 0.9963409304618835,
+        "max": 0.9980592131614685
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "variable": "AOP",
+    "heldout_bin": 3,
+    "bins": 5,
+    "train": {
+      "missions": 64000,
+      "success": 22432,
+      "failure": 41568,
+      "success_rate": 0.3505
+    },
+    "test": {
+      "missions": 16000,
+      "success": 3136,
+      "failure": 12864,
+      "success_rate": 0.196
+    },
+    "test_by_target": {
+      "jupiter": {
+        "missions": 2000,
+        "success": 746,
+        "failure": 1254,
+        "success_rate": 0.373
+      },
+      "mars": {
+        "missions": 2000,
+        "success": 404,
+        "failure": 1596,
+        "success_rate": 0.202
+      },
+      "mercury": {
+        "missions": 2000,
+        "success": 495,
+        "failure": 1505,
+        "success_rate": 0.2475
+      },
+      "moon": {
+        "missions": 2000,
+        "success": 864,
+        "failure": 1136,
+        "success_rate": 0.432
+      },
+      "neptune": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "saturn": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "uranus": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "venus": {
+        "missions": 2000,
+        "success": 627,
+        "failure": 1373,
+        "success_rate": 0.3135
+      }
+    },
+    "majority_class": {
+      "acc": 0.804,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.989,
+      "f1": 0.9723357434768941,
+      "auc": 0.9982660909221431,
+      "train_tuned_threshold": 0.39421378590843253,
+      "train_f1_at_threshold": 0.9962385096485566,
+      "test_at_train_threshold": {
+        "acc": 0.98775,
+        "f1": 0.9693941286695815,
+        "auc": 0.9982660909221431
+      },
+      "test_probability_summary": {
+        "min": 1.1688320228131488e-05,
+        "p25": 0.0001487310801167041,
+        "median": 0.000333237461745739,
+        "p75": 0.01400810293853283,
+        "max": 0.9997970461845398
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.9670625,
+      "f1": 0.9190102966036576,
+      "auc": 0.9937060601409407,
+      "train_tuned_threshold": 0.5218888575380491,
+      "train_f1_at_threshold": 0.9843530904315698,
+      "test_at_train_threshold": {
+        "acc": 0.967625,
+        "f1": 0.9202094886013555,
+        "auc": 0.9937060601409407
+      },
+      "test_probability_summary": {
+        "min": 5.939487891737372e-05,
+        "p25": 0.0003541004261933267,
+        "median": 0.0023994743824005127,
+        "p75": 0.14902843534946442,
+        "max": 0.9992350339889526
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "variable": "AOP",
+    "heldout_bin": 4,
+    "bins": 5,
+    "train": {
+      "missions": 70000,
+      "success": 25353,
+      "failure": 44647,
+      "success_rate": 0.3621857142857143
+    },
+    "test": {
+      "missions": 10000,
+      "success": 215,
+      "failure": 9785,
+      "success_rate": 0.0215
+    },
+    "test_by_target": {
+      "jupiter": {
+        "missions": 2000,
+        "success": 1,
+        "failure": 1999,
+        "success_rate": 0.0005
+      },
+      "mars": {
+        "missions": 2000,
+        "success": 0,
+        "failure": 2000,
+        "success_rate": 0.0
+      },
+      "mercury": {
+        "missions": 2000,
+        "success": 10,
+        "failure": 1990,
+        "success_rate": 0.005
+      },
+      "moon": {
+        "missions": 2000,
+        "success": 190,
+        "failure": 1810,
+        "success_rate": 0.095
+      },
+      "venus": {
+        "missions": 2000,
+        "success": 14,
+        "failure": 1986,
+        "success_rate": 0.007
+      }
+    },
+    "majority_class": {
+      "acc": 0.9785,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.9949,
+      "f1": 0.8811188811188811,
+      "auc": 0.9937700086748821,
+      "train_tuned_threshold": 0.6303075431332418,
+      "train_f1_at_threshold": 0.9970781015557135,
+      "test_at_train_threshold": {
+        "acc": 0.9951,
+        "f1": 0.8790123456790123,
+        "auc": 0.9937700086748821
+      },
+      "test_probability_summary": {
+        "min": 3.6331544833956286e-05,
+        "p25": 0.00025990899302996695,
+        "median": 0.0005072558997198939,
+        "p75": 0.0013539334759116173,
+        "max": 0.997183620929718
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.9686,
+      "f1": 0.0872093023255814,
+      "auc": 0.9305355848415349,
+      "train_tuned_threshold": 0.5505540370941162,
+      "train_f1_at_threshold": 0.9839927275601755,
+      "test_at_train_threshold": {
+        "acc": 0.9687,
+        "f1": 0.04281345565749235,
+        "auc": 0.9305355848415349
+      },
+      "test_probability_summary": {
+        "min": 7.308452040888369e-05,
+        "p25": 0.0008989890338853002,
+        "median": 0.0034838193096220493,
+        "p75": 0.011000219732522964,
+        "max": 0.9755308032035828
+      },
+      "feature_mode": "initial_no_context"
+    }
+  }
+]

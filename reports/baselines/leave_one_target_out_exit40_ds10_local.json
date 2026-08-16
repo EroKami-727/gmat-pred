@@ -1,0 +1,426 @@
+[
+  {
+    "heldout_target": "jupiter",
+    "train_missions": 70000,
+    "test_missions": 10000,
+    "train_success_rate": 0.31544285714285714,
+    "test_success_rate": 0.3487,
+    "majority_class": {
+      "acc": 0.6513,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.9981,
+      "f1": 0.9972806640904537,
+      "auc": 0.9981002676652386,
+      "train_tuned_threshold": 0.39986823016043926,
+      "train_f1_at_threshold": 0.9953910803849804,
+      "test_at_train_threshold": {
+        "acc": 0.9981,
+        "f1": 0.9972806640904537,
+        "auc": 0.9981002676652386
+      },
+      "test_probability_summary": {
+        "min": 0.00025933573488146067,
+        "p25": 0.00041249539935961366,
+        "median": 0.001534820068627596,
+        "p75": 0.9994953870773315,
+        "max": 0.9994953870773315
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.9978,
+      "f1": 0.9968526466380544,
+      "auc": 0.9982331337853732,
+      "train_tuned_threshold": 0.6060879230499268,
+      "train_f1_at_threshold": 0.9782668124658284,
+      "test_at_train_threshold": {
+        "acc": 0.9979,
+        "f1": 0.9969952782944628,
+        "auc": 0.9982331337853732
+      },
+      "test_probability_summary": {
+        "min": 0.0009509256342425942,
+        "p25": 0.002945713000372052,
+        "median": 0.004061817191541195,
+        "p75": 0.9781804084777832,
+        "max": 0.9788139462471008
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "heldout_target": "mars",
+    "train_missions": 70000,
+    "test_missions": 10000,
+    "train_success_rate": 0.32771428571428574,
+    "test_success_rate": 0.2628,
+    "majority_class": {
+      "acc": 0.7372,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.737,
+      "f1": 0.0,
+      "auc": 0.5088031836699974,
+      "train_tuned_threshold": 0.6228300333023071,
+      "train_f1_at_threshold": 0.9971840824256183,
+      "test_at_train_threshold": {
+        "acc": 0.7371,
+        "f1": 0.0,
+        "auc": 0.5088031836699974
+      },
+      "test_probability_summary": {
+        "min": 0.0007386410725302994,
+        "p25": 0.002205370459705591,
+        "median": 0.0025894762948155403,
+        "p75": 0.0046270741149783134,
+        "max": 0.7159650921821594
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.7372,
+      "f1": 0.0,
+      "auc": 0.8174451532434626,
+      "train_tuned_threshold": 0.5688150525093079,
+      "train_f1_at_threshold": 0.9843057647392661,
+      "test_at_train_threshold": {
+        "acc": 0.7372,
+        "f1": 0.0,
+        "auc": 0.8174451532434626
+      },
+      "test_probability_summary": {
+        "min": 0.0004343542386777699,
+        "p25": 0.0024975258857011795,
+        "median": 0.005381743889302015,
+        "p75": 0.008899671025574207,
+        "max": 0.06527458876371384
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "heldout_target": "mercury",
+    "train_missions": 70000,
+    "test_missions": 10000,
+    "train_success_rate": 0.3344714285714286,
+    "test_success_rate": 0.2155,
+    "majority_class": {
+      "acc": 0.7845,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.7845,
+      "f1": 0.0,
+      "auc": 0.4955000524962328,
+      "train_tuned_threshold": 0.8304484821088326,
+      "train_f1_at_threshold": 0.9954753071858984,
+      "test_at_train_threshold": {
+        "acc": 0.7845,
+        "f1": 0.0,
+        "auc": 0.4955000524962328
+      },
+      "test_probability_summary": {
+        "min": 0.0019743680022656918,
+        "p25": 0.004353462718427181,
+        "median": 0.005031893495470285,
+        "p75": 0.006167358253151178,
+        "max": 0.014648118987679482
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.7845,
+      "f1": 0.0,
+      "auc": 0.7614710479578966,
+      "train_tuned_threshold": 0.6968883393388805,
+      "train_f1_at_threshold": 0.9794974830946054,
+      "test_at_train_threshold": {
+        "acc": 0.7845,
+        "f1": 0.0,
+        "auc": 0.7614710479578966
+      },
+      "test_probability_summary": {
+        "min": 1.6307851183228195e-05,
+        "p25": 0.00014328924589790404,
+        "median": 0.00028161893715150654,
+        "p75": 0.0011138783302158117,
+        "max": 0.0061181955970823765
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "heldout_target": "moon",
+    "train_missions": 70000,
+    "test_missions": 10000,
+    "train_success_rate": 0.3148,
+    "test_success_rate": 0.3532,
+    "majority_class": {
+      "acc": 0.6468,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.6468,
+      "f1": 0.0,
+      "auc": 0.2957531887973968,
+      "train_tuned_threshold": 0.29629862725734996,
+      "train_f1_at_threshold": 0.9957708573625529,
+      "test_at_train_threshold": {
+        "acc": 0.6468,
+        "f1": 0.0,
+        "auc": 0.2957531887973968
+      },
+      "test_probability_summary": {
+        "min": 0.004961241967976093,
+        "p25": 0.007113715633749962,
+        "median": 0.012346586212515831,
+        "p75": 0.015174133703112602,
+        "max": 0.05514497682452202
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.6468,
+      "f1": 0.0,
+      "auc": 0.566121387039321,
+      "train_tuned_threshold": 0.7204561542019667,
+      "train_f1_at_threshold": 0.9919992705887716,
+      "test_at_train_threshold": {
+        "acc": 0.6468,
+        "f1": 0.0,
+        "auc": 0.566121387039321
+      },
+      "test_probability_summary": {
+        "min": 8.476989023620263e-05,
+        "p25": 9.711800521472469e-05,
+        "median": 0.00021668552653864026,
+        "p75": 0.00021668552653864026,
+        "max": 0.001162125961855054
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "heldout_target": "neptune",
+    "train_missions": 70000,
+    "test_missions": 10000,
+    "train_success_rate": 0.31525714285714285,
+    "test_success_rate": 0.35,
+    "majority_class": {
+      "acc": 0.65,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 1.0,
+      "f1": 1.0,
+      "auc": 1.0,
+      "train_tuned_threshold": 0.4135802525372221,
+      "train_f1_at_threshold": 0.9947795430405207,
+      "test_at_train_threshold": {
+        "acc": 1.0,
+        "f1": 1.0,
+        "auc": 1.0
+      },
+      "test_probability_summary": {
+        "min": 0.0008934912038967013,
+        "p25": 0.0015638757031410933,
+        "median": 0.0034109822008758783,
+        "p75": 0.9979442954063416,
+        "max": 0.9979442954063416
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 1.0,
+      "f1": 1.0,
+      "auc": 1.0,
+      "train_tuned_threshold": 0.5339608788490295,
+      "train_f1_at_threshold": 0.9784397034894232,
+      "test_at_train_threshold": {
+        "acc": 1.0,
+        "f1": 1.0,
+        "auc": 1.0
+      },
+      "test_probability_summary": {
+        "min": 4.2861236579483375e-05,
+        "p25": 0.0001387959491694346,
+        "median": 0.00036237892345525324,
+        "p75": 0.6855045557022095,
+        "max": 0.702228307723999
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "heldout_target": "saturn",
+    "train_missions": 70000,
+    "test_missions": 10000,
+    "train_success_rate": 0.31524285714285716,
+    "test_success_rate": 0.3501,
+    "majority_class": {
+      "acc": 0.6499,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.9999,
+      "f1": 0.999857163262391,
+      "auc": 0.9997345185133616,
+      "train_tuned_threshold": 0.3962281732306346,
+      "train_f1_at_threshold": 0.9950732236485265,
+      "test_at_train_threshold": {
+        "acc": 0.9999,
+        "f1": 0.999857163262391,
+        "auc": 0.9997345185133616
+      },
+      "test_probability_summary": {
+        "min": 0.00019208661979064345,
+        "p25": 0.0005676816217601299,
+        "median": 0.0011503887362778187,
+        "p75": 0.8452751636505127,
+        "max": 0.8452751636505127
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.9999,
+      "f1": 0.999857163262391,
+      "auc": 0.9997785127138625,
+      "train_tuned_threshold": 0.7002936790748054,
+      "train_f1_at_threshold": 0.9766502123751578,
+      "test_at_train_threshold": {
+        "acc": 0.9999,
+        "f1": 0.999857163262391,
+        "auc": 0.9997785127138625
+      },
+      "test_probability_summary": {
+        "min": 4.328373324824497e-05,
+        "p25": 0.00011186377378180623,
+        "median": 0.0001890404528239742,
+        "p75": 0.8087926506996155,
+        "max": 0.8087926506996155
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "heldout_target": "uranus",
+    "train_missions": 70000,
+    "test_missions": 10000,
+    "train_success_rate": 0.31684285714285715,
+    "test_success_rate": 0.3389,
+    "majority_class": {
+      "acc": 0.6611,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.6611,
+      "f1": 0.0,
+      "auc": 0.9916049009227046,
+      "train_tuned_threshold": 0.5594473171414771,
+      "train_f1_at_threshold": 0.9960324616771866,
+      "test_at_train_threshold": {
+        "acc": 0.6611,
+        "f1": 0.0,
+        "auc": 0.9916049009227046
+      },
+      "test_probability_summary": {
+        "min": 1.0625817594700493e-05,
+        "p25": 0.0018232505535706878,
+        "median": 0.004753722809255123,
+        "p75": 0.3946725130081177,
+        "max": 0.3946725130081177
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.9889,
+      "f1": 0.9838873566555378,
+      "auc": 0.9915925151170433,
+      "train_tuned_threshold": 0.6428629852786195,
+      "train_f1_at_threshold": 0.9780069977734357,
+      "test_at_train_threshold": {
+        "acc": 0.9889,
+        "f1": 0.9838873566555378,
+        "auc": 0.9915925151170433
+      },
+      "test_probability_summary": {
+        "min": 8.673860429553315e-05,
+        "p25": 0.0001568580191815272,
+        "median": 0.00043948186794295907,
+        "p75": 0.999043881893158,
+        "max": 0.999043881893158
+      },
+      "feature_mode": "initial_no_context"
+    }
+  },
+  {
+    "heldout_target": "venus",
+    "train_missions": 70000,
+    "test_missions": 10000,
+    "train_success_rate": 0.31702857142857144,
+    "test_success_rate": 0.3376,
+    "majority_class": {
+      "acc": 0.6624,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "xgboost_summary": {
+      "acc": 0.6624,
+      "f1": 0.0,
+      "auc": 0.8556163176557456,
+      "train_tuned_threshold": 0.6218833794015834,
+      "train_f1_at_threshold": 0.9979942757983459,
+      "test_at_train_threshold": {
+        "acc": 0.6624,
+        "f1": 0.0,
+        "auc": 0.8556163176557456
+      },
+      "test_probability_summary": {
+        "min": 0.0001101662201108411,
+        "p25": 0.0016232846537604928,
+        "median": 0.0029292558319866657,
+        "p75": 0.0033107667695730925,
+        "max": 0.017157552763819695
+      },
+      "feature_mode": "summary"
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.6624,
+      "f1": 0.0,
+      "auc": 0.9789970085800308,
+      "train_tuned_threshold": 0.5761736543792677,
+      "train_f1_at_threshold": 0.9812273229215964,
+      "test_at_train_threshold": {
+        "acc": 0.6624,
+        "f1": 0.0,
+        "auc": 0.9789970085800308
+      },
+      "test_probability_summary": {
+        "min": 0.0003785769222304225,
+        "p25": 0.0034734162036329508,
+        "median": 0.04141310602426529,
+        "p75": 0.21417348086833954,
+        "max": 0.24428629875183105
+      },
+      "feature_mode": "initial_no_context"
+    }
+  }
+]

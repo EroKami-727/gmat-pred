@@ -1,0 +1,262 @@
+[
+  {
+    "early_exit_frac": 0.4,
+    "early_exit_pct": 40,
+    "majority_class": {
+      "acc": 0.6774166666666667,
+      "f1": 0.0,
+      "auc": 0.5,
+      "majority_class": 0
+    },
+    "energy_threshold": {
+      "acc": 0.4409166666666667,
+      "f1": 0.5357414711784652,
+      "auc": 0.5348751383934063,
+      "best_threshold": 63.763216868313876
+    },
+    "xgboost": {
+      "acc": 0.9944166666666666,
+      "f1": 0.9913425507171469,
+      "auc": 0.9997975680132547,
+      "feature_mode": "summary",
+      "top_features": [
+        {
+          "feature": "rel_z_std",
+          "importance": 0.2678038477897644
+        },
+        {
+          "feature": "fpa_deg_last",
+          "importance": 0.23442794382572174
+        },
+        {
+          "feature": "spec_energy_min",
+          "importance": 0.12955401837825775
+        },
+        {
+          "feature": "fpa_deg_std",
+          "importance": 0.07290036231279373
+        },
+        {
+          "feature": "ecc_mean",
+          "importance": 0.060704391449689865
+        },
+        {
+          "feature": "ecc_min",
+          "importance": 0.052037812769412994
+        },
+        {
+          "feature": "vel_mag_std",
+          "importance": 0.045387785881757736
+        },
+        {
+          "feature": "norm_target_dist_min",
+          "importance": 0.02138892561197281
+        },
+        {
+          "feature": "rel_z_mean",
+          "importance": 0.020280133932828903
+        },
+        {
+          "feature": "ecc_last",
+          "importance": 0.00801592506468296
+        },
+        {
+          "feature": "fpa_deg_mean",
+          "importance": 0.006908337585628033
+        },
+        {
+          "feature": "ecc_max",
+          "importance": 0.0058806417509913445
+        },
+        {
+          "feature": "rel_y_min",
+          "importance": 0.005698878318071365
+        },
+        {
+          "feature": "earth_rmag_mean",
+          "importance": 0.004218665417283773
+        },
+        {
+          "feature": "rel_y_std",
+          "importance": 0.004192565102130175
+        }
+      ]
+    },
+    "xgboost_endpoints": {
+      "acc": 0.9914166666666666,
+      "f1": 0.9867319335308514,
+      "auc": 0.999475694798537,
+      "feature_mode": "endpoints",
+      "top_features": [
+        {
+          "feature": "rel_z_first",
+          "importance": 0.46805742383003235
+        },
+        {
+          "feature": "fpa_deg_last",
+          "importance": 0.11412917077541351
+        },
+        {
+          "feature": "norm_target_dist_first",
+          "importance": 0.08523472398519516
+        },
+        {
+          "feature": "ecc_first",
+          "importance": 0.07284240424633026
+        },
+        {
+          "feature": "earth_rmag_last",
+          "importance": 0.04649597778916359
+        },
+        {
+          "feature": "rel_y_last",
+          "importance": 0.03204106539487839
+        },
+        {
+          "feature": "ecc_last",
+          "importance": 0.026431232690811157
+        },
+        {
+          "feature": "fpa_deg_first",
+          "importance": 0.025155721232295036
+        },
+        {
+          "feature": "radial_vel_last",
+          "importance": 0.01999099738895893
+        },
+        {
+          "feature": "vel_mag_last",
+          "importance": 0.018824100494384766
+        },
+        {
+          "feature": "rel_x_last",
+          "importance": 0.01783168874680996
+        },
+        {
+          "feature": "spec_energy_first",
+          "importance": 0.01737462542951107
+        },
+        {
+          "feature": "vel_mag_first",
+          "importance": 0.012743864208459854
+        },
+        {
+          "feature": "spec_energy_last",
+          "importance": 0.010574264451861382
+        },
+        {
+          "feature": "rel_z_last",
+          "importance": 0.009689007885754108
+        }
+      ]
+    },
+    "xgboost_initial": {
+      "acc": 0.9829166666666667,
+      "f1": 0.9735586224687218,
+      "auc": 0.9981080395084951,
+      "feature_mode": "initial",
+      "top_features": [
+        {
+          "feature": "rel_z_first",
+          "importance": 0.40809646248817444
+        },
+        {
+          "feature": "ecc_first",
+          "importance": 0.18245799839496613
+        },
+        {
+          "feature": "vel_mag_first",
+          "importance": 0.1294671595096588
+        },
+        {
+          "feature": "mu_ratio_first",
+          "importance": 0.09550260752439499
+        },
+        {
+          "feature": "norm_target_dist_first",
+          "importance": 0.069148950278759
+        },
+        {
+          "feature": "rel_y_first",
+          "importance": 0.03176701441407204
+        },
+        {
+          "feature": "spec_energy_first",
+          "importance": 0.03160012140870094
+        },
+        {
+          "feature": "fpa_deg_first",
+          "importance": 0.025920657441020012
+        },
+        {
+          "feature": "radial_vel_first",
+          "importance": 0.01331512164324522
+        },
+        {
+          "feature": "rel_x_first",
+          "importance": 0.012723904103040695
+        },
+        {
+          "feature": "earth_rmag_first",
+          "importance": 0.0
+        },
+        {
+          "feature": "dist_ratio_first",
+          "importance": 0.0
+        },
+        {
+          "feature": "soi_ratio_first",
+          "importance": 0.0
+        }
+      ]
+    },
+    "xgboost_initial_no_context": {
+      "acc": 0.9833333333333333,
+      "f1": 0.9742068609749807,
+      "auc": 0.9981047027175047,
+      "feature_mode": "initial_no_context",
+      "top_features": [
+        {
+          "feature": "rel_z_first",
+          "importance": 0.44006672501564026
+        },
+        {
+          "feature": "ecc_first",
+          "importance": 0.21106822788715363
+        },
+        {
+          "feature": "vel_mag_first",
+          "importance": 0.14269930124282837
+        },
+        {
+          "feature": "norm_target_dist_first",
+          "importance": 0.07390934228897095
+        },
+        {
+          "feature": "rel_y_first",
+          "importance": 0.034990061074495316
+        },
+        {
+          "feature": "spec_energy_first",
+          "importance": 0.03372487798333168
+        },
+        {
+          "feature": "fpa_deg_first",
+          "importance": 0.02839774638414383
+        },
+        {
+          "feature": "rel_x_first",
+          "importance": 0.021299881860613823
+        },
+        {
+          "feature": "radial_vel_first",
+          "importance": 0.013843826949596405
+        },
+        {
+          "feature": "earth_rmag_first",
+          "importance": 0.0
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,86 @@
+{
+  "model_path": "models/transformer_production/best_model_transformer_binary.pt",
+  "data_path": "data/merged/missions.parquet",
+  "arch": "transformer",
+  "early_exit": 0.4,
+  "downsample_factor": 10,
+  "seed": 42,
+  "split": {
+    "train": 7000,
+    "val": 1500,
+    "test": 1500
+  },
+  "val_best_threshold": 0.6967321093877157,
+  "val_f1_at_best_threshold": 0.9478764478764479,
+  "test_at_0_5": {
+    "threshold": 0.5,
+    "accuracy": 0.9646666666666667,
+    "f1": 0.9467336683417086,
+    "roc_auc": 0.9950868556073758,
+    "pr_auc": 0.9914410486058368,
+    "brier_score": 0.02885538898408413,
+    "ece": 0.023988563205581178,
+    "confusion_matrix": {
+      "tn": 976,
+      "fp": 13,
+      "fn": 40,
+      "tp": 471
+    },
+    "n_samples": 1500,
+    "success_rate": 0.3406666666666667
+  },
+  "test_at_best_threshold": {
+    "threshold": 0.6967321093877157,
+    "accuracy": 0.9613333333333334,
+    "f1": 0.9411764705882353,
+    "roc_auc": 0.9950868556073758,
+    "pr_auc": 0.9914410486058368,
+    "brier_score": 0.02885538898408413,
+    "ece": 0.023988563205581178,
+    "confusion_matrix": {
+      "tn": 978,
+      "fp": 11,
+      "fn": 47,
+      "tp": 464
+    },
+    "n_samples": 1500,
+    "success_rate": 0.3406666666666667
+  },
+  "test_isotonic_calibrated": {
+    "threshold": 0.5,
+    "accuracy": 0.962,
+    "f1": 0.9421319796954315,
+    "roc_auc": 0.9939837231068169,
+    "pr_auc": 0.9870867277198607,
+    "brier_score": 0.026133675128221512,
+    "ece": 0.007099508089013401,
+    "confusion_matrix": {
+      "tn": 979,
+      "fp": 10,
+      "fn": 47,
+      "tp": 464
+    },
+    "n_samples": 1500,
+    "success_rate": 0.3406666666666667
+  },
+  "per_target": {
+    "moon": {
+      "threshold": 0.6967321093877157,
+      "accuracy": 0.9613333333333334,
+      "f1": 0.9411764705882353,
+      "roc_auc": 0.9950868556073758,
+      "pr_auc": 0.9914410486058368,
+      "brier_score": 0.02885538898408413,
+      "ece": 0.023988563205581178,
+      "confusion_matrix": {
+        "tn": 978,
+        "fp": 11,
+        "fn": 47,
+        "tp": 464
+      },
+      "n_samples": 1500,
+      "success_rate": 0.3406666666666667,
+      "calibrated_brier": 0.026133675128221512
+    }
+  }
+}

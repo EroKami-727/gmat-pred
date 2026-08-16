@@ -1,0 +1,40 @@
+\begin{table}[h]
+\centering
+\caption{Performance comparison by early-exit fraction}
+\label{tab:main_comparison}
+\begin{tabular}{llcccr}
+\toprule
+Exit \% & Model & AUC & F1 & Acc & Compute Saved \\
+\midrule
+10\% & \textbf{Transformer (ours)} & \textbf{0.889} & \textbf{0.778} & \textbf{83.9\%} & 90\% \\
+10\% & XGBoost & 0.996 & 0.949 & 96.5\% & 90\% \\
+10\% & Energy Threshold & 0.562 & 0.640 & 63.2\% & 90\% \\
+10\% & Majority Class & 0.500 & 0.000 & 65.7\% & 90\% \\
+\midrule
+20\% & \textbf{Transformer (ours)} & \textbf{0.964} & \textbf{0.854} & \textbf{90.7\%} & 80\% \\
+20\% & XGBoost & 0.998 & 0.967 & 97.7\% & 80\% \\
+20\% & Energy Threshold & 0.561 & 0.641 & 63.4\% & 80\% \\
+20\% & Majority Class & 0.500 & 0.000 & 65.7\% & 80\% \\
+\midrule
+30\% & \textbf{Transformer (ours)} & \textbf{0.982} & \textbf{0.893} & \textbf{92.8\%} & 70\% \\
+30\% & XGBoost & 0.996 & 0.961 & 97.3\% & 70\% \\
+30\% & Energy Threshold & 0.563 & 0.640 & 63.2\% & 70\% \\
+30\% & Majority Class & 0.500 & 0.000 & 65.7\% & 70\% \\
+\midrule
+40\% & \textbf{Transformer (ours)} & \textbf{0.997} & \textbf{0.948} & \textbf{96.5\%} & 60\% \\
+40\% & XGBoost & 1.000 & 0.983 & 98.8\% & 60\% \\
+40\% & Energy Threshold & 0.549 & 0.600 & 57.4\% & 60\% \\
+40\% & Majority Class & 0.500 & 0.000 & 65.7\% & 60\% \\
+\midrule
+60\% & \textbf{Transformer (ours)} & \textbf{0.998} & \textbf{0.971} & \textbf{98.0\%} & 40\% \\
+60\% & XGBoost & 0.999 & 0.979 & 98.5\% & 40\% \\
+60\% & Energy Threshold & 0.551 & 0.602 & 57.7\% & 40\% \\
+60\% & Majority Class & 0.500 & 0.000 & 65.7\% & 40\% \\
+\midrule
+100\% & \textbf{Transformer (ours)} & \textbf{1.000} & \textbf{0.989} & \textbf{99.3\%} & 0\% \\
+100\% & XGBoost & 1.000 & 0.986 & 99.0\% & 0\% \\
+100\% & Energy Threshold & 0.553 & 0.611 & 59.1\% & 0\% \\
+100\% & Majority Class & 0.500 & 0.000 & 65.7\% & 0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
