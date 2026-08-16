@@ -380,6 +380,13 @@ To recalibrate without retraining (models stay frozen; only the operating point 
 
 ---
 
+## Verify the install
+
+```bash
+PYTHONPATH=. python test_api.py --quick    # serving layer (no server needed)
+PYTHONPATH=. python test_ml.py --limit 300 --skip-synthetic
+```
+
 ## Quick Start
 
 ```bash

@@ -64,6 +64,17 @@ elsewhere:
 export ORBITGUARD_DATA=/media/Data/Coding/gmat-pred/data/merged_all_v2
 ```
 
+## Verifying a working install
+
+```bash
+PYTHONPATH=. python test_api.py --quick   # serving layer, app mounted in-process
+PYTHONPATH=. python test_ml.py --limit 300 --skip-synthetic   # models on held-out data
+```
+
+`test_api.py` needs no server running and no GPU; it will report the dataset as
+unmounted rather than failing obscurely if `$ORBITGUARD_DATA` is wrong, which
+makes it the fastest check that an environment is set up correctly.
+
 ## Optional / legacy
 
 - `seaborn` is used only by `src/data_collection/eda_report.py`.
