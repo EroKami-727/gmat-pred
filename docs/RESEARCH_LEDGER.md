@@ -720,3 +720,70 @@ guarded survives in a stronger form, now stated as the T0-vs-T40 comparison.
 
 Single-seed headline results (WP4) — documented in `LIMITATIONS.md` §1 rather
 than closed. ~1 hour of compute; not spent yet. Report as point estimates.
+
+## Serving-Layer Audit (2026-08-16)
+
+The ML side has been audited repeatedly; the serving layer never had been, and
+it had no tests. Everything below was found by running the API rather than
+reading it.
+
+### The synthetic-mission OOD item is resolved
+
+The 2026-08-02 open item "Synthetic missions are out-of-distribution" is stale.
+`src/api/mission_builder.py` fixed it by building user missions through the same
+propagator and feature code as the dataset (`gmat_runner.run_synthetic`) instead
+of the simplified heliocentric path in `trajectory_gen.py`. Verified by scoring
+built missions through the router:
+
+| Target  | Offset      | Label | P(fail) | OOD   |
+|---------|-------------|-------|---------|-------|
+| Venus   | nominal     | 1     | 0.0001  | False |
+| Venus   | dv_V +0.05  | 0     | 1.0000  | True  |
+| Mars    | nominal     | 1     | 0.0002  | False |
+| Mars    | dv_V +0.05  | 0     | 1.0000  | True  |
+| Jupiter | nominal     | 1     | 0.0008  | False |
+
+Nominal missions score in-distribution and correctly; perturbed ones are caught.
+The OOD flag on the perturbed inner-planet cases is correct behaviour, not a
+defect — dispersions are tiny (Venus dv_V sigma = 0.003 km/s) so a 0.05 km/s
+offset is genuinely tens of sigma outside the sampled corridor, and the verdict
+is still right.
+
+`trajectory_gen.py` survives only as the source of heliocentric planet constants
+and Hohmann helpers for the creator UI. It no longer generates scored missions.
+
+### Moon was unreachable from the mission creator
+
+`/api/simulator/planet_info` iterated `trajectory_gen.PLANET_DATA` — heliocentric
+targets only — so Moon was absent from the response that drives the creator UI,
+despite `build_mission("moon")` working, the Moon model being trained and served
+(test F1 0.9888), and the planet dropdown listing it. The endpoint now iterates
+`SERVING_TARGETS` and marks Moon `frame: "earth-centric"` with the heliocentric
+fields explicitly null. End-to-end check: a perturbed Moon mission now builds,
+streams, and aborts at 40.2% observed with the correct failure mode
+(`orbit_too_high`, confidence 1.0, not flagged OOD).
+
+### The dataset path was wrong on both sides
+
+The three simulator endpoints defaulted to `data/merged/missions.parquet`, a
+March generation the per-planet models were never trained on. Nothing hit that
+default only because the frontend overrode it on every request with
+`/media/Data/.../merged_all_v2/missions.parquet` — an absolute path compiled into
+the JS bundle and shipped to the browser, which cannot work for a dashboard
+deployed to Vercel. Server resolves from `$ORBITGUARD_DATA` now; the client sends
+nothing unless a deliberate override is typed.
+
+### Fake telemetry in the dashboard header
+
+The three header lamps were string literals — "ALLOCATED // 98%",
+"MOUNTED // SECURE", "IDLE_READY" — rendered on every screen regardless of
+backend state. A GPU utilisation figure that is a hardcoded string is worse than
+no figure. They poll `/api/system` now and degrade to OFFLINE in red when the
+backend is unreachable.
+
+### Tests
+
+`test_api.py` mounts the app in-process and covers the above: dataset
+resolution, planet_info and threshold coverage over the serving set, per-target
+mission building, and an end-to-end abort. 24/24 passing. It exists because
+every defect in this section was invisible until someone opened the dashboard.
