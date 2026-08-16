@@ -56,14 +56,20 @@ zero-shot generalisation to an unseen target.
 ## 5. Simulator realism
 
 Two/three-body dynamics, no execution error, no unmodelled accelerations, no
-sensor noise, no navigation uncertainty. The synthetic mission builder in
-`src/api/trajectory_gen.py` additionally uses *heliocentric* two-body physics
-while the training data is GMAT-derived with an Earth-centric departure, so
-`spec_energy`/`ecc`/`earth_rmag` reference a different body. The router detects
-the resulting extreme z-scores and withholds a verdict rather than emitting a
-confident wrong one, but the frame mismatch itself is not fixed — scoring
-generated missions properly requires modelling the LEO departure and hyperbolic
-escape.
+sensor noise, no navigation uncertainty.
+
+User-built missions are *not* a separate limitation any more.
+`src/api/mission_builder.py` constructs them with the same propagator and
+feature code as the dataset, so they are in-distribution and scorable — verified
+end to end, nominal missions scoring P(fail) 0.0001-0.0008 with no OOD flag. The
+earlier heliocentric generator (`src/api/trajectory_gen.py`) produced
+Sun-referenced elements against Earth-centric training data and drove every
+generated mission to |z| ~ 1e13; it now supplies only planet constants and
+Hohmann helpers to the creator UI, and generates nothing that gets scored.
+
+The OOD detector still fires on genuinely extreme inputs — a 0.05 km/s TOI
+offset is tens of sigma outside a corridor whose 1-sigma is 0.003 km/s — and
+that is the intended behaviour, not a residual defect.
 
 ## 6. No real mission data
 
