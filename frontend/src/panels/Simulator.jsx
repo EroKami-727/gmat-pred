@@ -38,7 +38,11 @@ const MODE_DESC = {
   unknown:         'mode not classified',
 }
 
-const GEN_PLANETS = ['mars', 'venus', 'mercury', 'jupiter', 'saturn', 'uranus', 'neptune']
+// Fallback only. The real list comes from /api/simulator/planet_info, so a
+// target the backend can build never has to be added here by hand — this
+// literal is what kept Moon out of the mission creator even after the Moon
+// model was trained and served.
+const GEN_PLANETS_FALLBACK = ['mars', 'venus', 'mercury', 'jupiter', 'saturn', 'uranus', 'neptune']
 
 const INIT_STREAM = {
   status:            'idle',  // idle | loading | streaming | paused | canceled | completed | error
@@ -718,6 +722,16 @@ function CreateMissionForm({ onGenerate, onClose, disabled, planetInfo }) {
   const [genError,   setGenError]   = useState(null)
   const [showAdv,    setShowAdv]    = useState(false)
 
+  // Targets the backend reports it can build, in a stable order.
+  const genPlanets = planetInfo
+    ? Object.keys(planetInfo).sort((a, b) => {
+        const ia = GEN_PLANETS_FALLBACK.indexOf(a)
+        const ib = GEN_PLANETS_FALLBACK.indexOf(b)
+        // Known targets keep their curated order; anything new lands after them.
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+      })
+    : GEN_PLANETS_FALLBACK
+
   const info    = planetInfo?.[target] || {}
   const sigmaDv = info.sigma?.dv_V ?? 0.003
   const nominal = info.nominal?.TOI_V
@@ -769,7 +783,7 @@ function CreateMissionForm({ onGenerate, onClose, disabled, planetInfo }) {
           <select className="field-input"
             style={{ width: '110px', fontSize: '11px', background: 'var(--bg2)', color: pColor, fontFamily: 'var(--mono)', borderColor: `${pColor}88` }}
             value={target} onChange={e => handleTargetChange(e.target.value)}>
-            {GEN_PLANETS.map(p => <option key={p} value={p}>{p.toUpperCase()}</option>)}
+            {genPlanets.map(p => <option key={p} value={p}>{p.toUpperCase()}</option>)}
           </select>
         </div>
 
