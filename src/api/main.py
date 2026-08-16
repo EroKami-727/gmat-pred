@@ -45,6 +45,7 @@ from src.ml.planet_router import PlanetRouter
 # seven-target study set is a reporting concept, not a serving one.
 from src.ml.planet_config import SERVING_TARGETS as ALL_PLANETS, OPERATING_FRAC
 from src.api.trajectory_gen import hohmann_c3, optimal_phase_deg, PLANET_DATA
+from src.paths import missions_parquet
 from src.api.mission_builder import build_mission, nominal_for, dispersion_scale
 
 
@@ -413,9 +414,27 @@ async def get_thresholds():
     return {target: router.threshold_for(target) for target in sorted(ALL_PLANETS)}
 
 
+def _dataset_path(data: str | None) -> Path:
+    """
+    Resolve the mission table a simulator request should read.
+
+    `data` used to default to the literal "data/merged/missions.parquet" — a
+    March generation the per-planet models were never trained on — while the
+    frontend papered over it by sending an absolute path from its own machine on
+    every request. Both halves were wrong: the server default pointed at the
+    wrong dataset, and the browser had no business knowing a filesystem path at
+    all (it breaks the moment the dashboard is served from anywhere but the box
+    holding the data).
+
+    The server now resolves its own default from $ORBITGUARD_DATA. An explicit
+    `data` parameter still overrides, for comparing against an older generation.
+    """
+    return Path(data) if data else missions_parquet()
+
+
 @app.get("/api/simulator/missions")
 async def sample_missions(
-    data: str = Query("data/merged/missions.parquet"),
+    data: str | None = Query(None, description="Override the dataset path; defaults to the configured root ($ORBITGUARD_DATA)."),
     n: int = Query(12),
     seed: int = Query(42),
     target: str = Query("ALL"),
@@ -424,9 +443,9 @@ async def sample_missions(
     Return N random mission IDs and their true labels from the dataset.
     Streams in small batches and stops early — never reads the whole file into RAM.
     """
-    data_path = Path(data)
+    data_path = _dataset_path(data)
     if not data_path.exists():
-        return JSONResponse(status_code=404, content={"error": f"Dataset not found: {data}"})
+        return JSONResponse(status_code=404, content={"error": f"Dataset not found: {data_path}"})
 
     def _load():
         import pyarrow.parquet as pq
@@ -600,7 +619,7 @@ async def generate_mission_endpoint(body: dict):
 @app.get("/api/simulator/trajectory")
 async def get_trajectory(
     mission_id: str = Query(...),
-    data: str = Query("data/merged/missions.parquet"),
+    data: str | None = Query(None, description="Override the dataset path; defaults to the configured root ($ORBITGUARD_DATA)."),
     downsample: int = Query(2),
 ):
     """
@@ -623,9 +642,9 @@ async def get_trajectory(
         }
 
     mid_int   = int(mission_id)
-    data_path = Path(data)
+    data_path = _dataset_path(data)
     if not data_path.exists():
-        return JSONResponse(status_code=404, content={"error": f"Dataset not found: {data}"})
+        return JSONResponse(status_code=404, content={"error": f"Dataset not found: {data_path}"})
 
     def _load():
         import pyarrow.dataset as ds_arrow
@@ -699,7 +718,7 @@ async def get_trajectory(
 @app.get("/api/simulator/stream")
 async def simulator_stream(
     mission_id: str = Query(...),
-    data: str = Query("data/merged/missions.parquet"),
+    data: str | None = Query(None, description="Override the dataset path; defaults to the configured root ($ORBITGUARD_DATA)."),
     step_delay_ms: int = Query(80),
     threshold: float = Query(0.5),
     min_elapsed_pct: float = Query(0.4, description="Minimum trajectory fraction before cancellation is allowed (match training early_exit_frac)"),
@@ -733,10 +752,10 @@ async def simulator_stream(
         target_body  = cached["target_body"]
     else:
         mid_int   = int(mission_id)
-        data_path = Path(data)
+        data_path = _dataset_path(data)
         if not data_path.exists():
             async def _no_data():
-                yield f"data: {json.dumps({'type': 'error', 'text': f'Dataset not found: {data}'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'text': f'Dataset not found: {data_path}'})}\n\n"
             return StreamingResponse(_no_data(), media_type="text/event-stream")
 
         def _load_mission():
