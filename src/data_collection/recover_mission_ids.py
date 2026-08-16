@@ -23,7 +23,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.dataset as ds_arrow
 
-from src.ml.planet_config import PLANETS
+from src.ml.planet_config import ALL_TARGETS
 
 
 def mission_id_order(dataset, planet: str, batch_size: int = 32_768) -> np.ndarray:
@@ -62,7 +62,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
     ap.add_argument("--dir", default="data/per_planet")
-    ap.add_argument("--planets", nargs="+", default=PLANETS)
+    ap.add_argument("--planets", nargs="+", default=ALL_TARGETS)  # repair utility: all extracts
     args = ap.parse_args()
 
     dataset = ds_arrow.dataset(args.data, format="parquet")

@@ -9,6 +9,16 @@ Native cadence in merged_all_v2 is 15 h per row for every target, so raw
 mission length varies ~100x between Mercury (202 rows) and Neptune (21,471).
 Downsampling each planet to ~TARGET_STEPS rows gives all planets comparable
 sequence lengths.
+
+Three target sets are defined here and they are not interchangeable:
+
+    ALL_TARGETS      everything in the dataset, Moon included
+    PLANETS          the seven-target study set — use for anything reported
+    SERVING_TARGETS  what the router loads and the API offers, Moon included
+
+Reported results use PLANETS. Training and calibration cover SERVING_TARGETS,
+because the live simulator still offers Moon even though the paper does not
+claim anything about it.
 """
 
 from __future__ import annotations
@@ -30,7 +40,36 @@ ROWS_PER_MISSION = {
     "saturn": 4241, "uranus": 11248, "neptune": 21471,
 }
 
-PLANETS = list(ROWS_PER_MISSION)
+# Every target present in the dataset.
+ALL_TARGETS = list(ROWS_PER_MISSION)
+
+# Targets deliberately excluded from the study, and therefore from every
+# reported table.
+#
+# Moon is out of scope. It is not an interplanetary transfer: a 6-day trajectory
+# sampled at 60 s inside Earth's sphere of influence, against seven heliocentric
+# transfers of 127-13,419 propagation-days sampled at 15 h. It shares neither
+# the cost structure that the pruning economics are built on (its propagation is
+# ~1/100th of the cheapest planet) nor the dynamical regime, and the
+# leave-one-target-out audit already showed it as the single worst transfer
+# case (AUC 0.296).
+#
+# It was previously dropped by accident rather than by decision — the Moon
+# extract was regenerated after recover_mission_ids.py ran, so it lacks the
+# mission_ids key, and prune_economics.py printed a skip line and carried on.
+# The headline table has therefore always been seven targets. Making the
+# exclusion explicit means the paper can state it as a scope decision, which is
+# what it is, instead of leaving a reviewer to ask where the Moon went.
+EXCLUDED_TARGETS = {"moon"}
+
+#: The study set: seven interplanetary targets. This is what PLANETS means for
+#: training, evaluation and every reported result.
+PLANETS = [p for p in ALL_TARGETS if p not in EXCLUDED_TARGETS]
+
+#: Serving keeps Moon. Its model is trained and calibrated (test F1 0.9888) and
+#: the live simulator offers it as a target, so the router and API load the full
+#: set. Excluded from the study != removed from the product.
+SERVING_TARGETS = ALL_TARGETS
 
 FAILURE_NAMES = {
     0: "success", 1: "surface_impact", 2: "orbit_too_high", 3: "missed_target",

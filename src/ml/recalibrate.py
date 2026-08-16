@@ -21,7 +21,7 @@ import torch
 from sklearn.metrics import f1_score, roc_auc_score
 
 from src.ml.per_planet_train import pick_threshold
-from src.ml.planet_config import OPERATING_FRAC, PLANETS
+from src.ml.planet_config import OPERATING_FRAC, SERVING_TARGETS
 from src.ml.planet_router import PlanetRouter
 
 SEED = 42
@@ -55,7 +55,8 @@ def main():
 
     data_dir = Path(args.data_dir)
     root = Path(args.models_root)
-    targets = [args.planet] if args.planet else PLANETS
+    # Thresholds are read by the router at serve time, so calibrate Moon too.
+    targets = [args.planet] if args.planet else SERVING_TARGETS
 
     print(f"\n[ Recalibration @ {OPERATING_FRAC:.0%} observed ]")
     print(f"  {'PLANET':10} {'OLD':>7} {'NEW':>7} {'VAL_F1':>7} "

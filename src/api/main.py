@@ -41,7 +41,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from src.ml.dataset import TrajectoryDataset, FEATURE_COLS
 from src.ml.model import TrajectoryLSTM, TrajectoryTransformer
 from src.ml.planet_router import PlanetRouter
-from src.ml.planet_config import PLANETS as ALL_PLANETS, OPERATING_FRAC
+# The API surfaces every target it can serve, Moon included; the
+# seven-target study set is a reporting concept, not a serving one.
+from src.ml.planet_config import SERVING_TARGETS as ALL_PLANETS, OPERATING_FRAC
 from src.api.trajectory_gen import hohmann_c3, optimal_phase_deg, PLANET_DATA
 from src.api.mission_builder import build_mission, nominal_for, dispersion_scale
 

@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 from sklearn.metrics import roc_auc_score
 
-from src.ml.planet_config import FAILURE_NAMES, OPERATING_FRAC, PLANETS
+from src.ml.planet_config import FAILURE_NAMES, OPERATING_FRAC, SERVING_TARGETS
 
 SEED = 42
 
@@ -107,7 +107,8 @@ def main():
     ap.add_argument("--models-root", default="models/per_planet")
     args = ap.parse_args()
 
-    targets = PLANETS if args.all else [args.planet]
+    # Serving set, not the study set — the assist is a serving artifact.
+    targets = SERVING_TARGETS if args.all else [args.planet]
     if not targets or targets == [None]:
         ap.error("pass --planet <name> or --all")
 

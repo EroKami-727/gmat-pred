@@ -44,7 +44,7 @@ from sklearn.metrics import f1_score, roc_auc_score
 from src.ml.dataset import FEATURE_COLS
 from src.ml.model import TrajectoryTransformer
 from src.ml.planet_config import (
-    FAILURE_NAMES, N_FAILURE_CLASSES, OPERATING_FRAC, PLANETS,
+    FAILURE_NAMES, N_FAILURE_CLASSES, OPERATING_FRAC, SERVING_TARGETS,
     TARGET_STEPS, downsample_for,
 )
 
@@ -335,7 +335,10 @@ def main():
 
     data_dir = Path(args.data_dir)
     out_root = Path(args.out_root)
-    targets = PLANETS if args.all else [args.planet]
+    # --all covers SERVING_TARGETS, not the study set: the live simulator
+    # still offers Moon, so a retrain must keep producing its model even
+    # though no reported table includes it.
+    targets = SERVING_TARGETS if args.all else [args.planet]
     if not targets or targets == [None]:
         ap.error("pass --planet <name> or --all")
 

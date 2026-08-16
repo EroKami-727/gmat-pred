@@ -32,7 +32,7 @@ import torch
 from src.ml.dataset import FEATURE_COLS
 from src.ml.model import TrajectoryTransformer
 from src.ml.planet_config import (
-    FAILURE_NAMES, N_FAILURE_CLASSES, OPERATING_FRAC, PLANETS, downsample_for,
+    FAILURE_NAMES, N_FAILURE_CLASSES, OPERATING_FRAC, SERVING_TARGETS, downsample_for,
 )
 
 log = logging.getLogger(__name__)
@@ -61,7 +61,8 @@ class PlanetRouter:
 
     def _load(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        for planet in PLANETS:
+        # SERVING_TARGETS: the router backs the live API, which offers Moon.
+        for planet in SERVING_TARGETS:
             d = self.root / planet
             mp, sp, meta_p = d / "model.pt", d / "norm_stats.npz", d / "meta.json"
             if not (mp.exists() and sp.exists() and meta_p.exists()):
