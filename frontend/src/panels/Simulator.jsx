@@ -644,7 +644,7 @@ function VerdictBanner({ status, wasCorrect, trueLabel, finalProb, abortPct, abo
           padding: '10px 20px 11px', background: '#0d0708',
           borderLeft: `4px solid ${col}`, border: '1px solid #1f1416', borderTop: 'none',
         }}>
-          <div style={{ fontSize: '9px', color: '#664', fontFamily: 'var(--mono)',
+          <div style={{ fontSize: '9px', fontFamily: 'var(--mono)',
                         letterSpacing: '0.1em', marginBottom: '6px', color: '#7a5560' }}>
             WHY THIS RUN WAS PRUNED
           </div>
