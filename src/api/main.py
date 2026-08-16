@@ -188,6 +188,25 @@ async def system_snapshot():
     if cache:
         snap["model_params"] = sum(p.numel() for p in cache["model"].parameters())
 
+    # Dataset availability. The header used to assert "MOUNTED // SECURE"
+    # unconditionally; the volume is external and can genuinely be absent, which
+    # is exactly when someone needs to be told.
+    ds = missions_parquet()
+    snap["dataset_path"] = str(ds)
+    snap["dataset_mounted"] = ds.exists()
+    if snap["dataset_mounted"]:
+        try:
+            snap["dataset_size_gb"] = round(ds.stat().st_size / 1e9, 1)
+        except OSError:
+            snap["dataset_size_gb"] = None
+
+    # Which per-planet models the router actually holds.
+    try:
+        router = _load_router()
+        snap["planets_loaded"] = sorted(router._caches)
+    except Exception:                                            # noqa: BLE001
+        snap["planets_loaded"] = []
+
     return snap
 
 
