@@ -12,7 +12,13 @@ import { API } from '../lib/api.js'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_DATA = '/media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet'
+// Empty means "use whatever dataset the server is configured for"
+// ($ORBITGUARD_DATA, resolved by src/paths.py). This used to hold an absolute
+// path from one developer's machine, which got compiled into the bundle and
+// sent to the API on every request — so the deployed dashboard asked the
+// backend to read a filesystem path that only existed on someone else's box.
+// The field below is still editable, as a deliberate override.
+const DEFAULT_DATA = ''
 const PLANET_LIST  = ['ALL', 'Jupiter', 'Saturn', 'Neptune', 'Uranus', 'Mars', 'Mercury', 'Venus', 'Moon']
 const PLANET_COLORS = {
   Jupiter: '#ffaa44', Saturn: '#ddcc88', Neptune: '#5588ff',
@@ -915,7 +921,8 @@ export default function Simulator() {
     setMissionResults({})
     try {
       const params = new URLSearchParams({
-        n, data: dataPath, seed: String(Date.now() % 99999),
+        n, seed: String(Date.now() % 99999),
+        ...(dataPath ? { data: dataPath } : {}),
         ...(planetFilter !== 'ALL' ? { target: planetFilter } : {}),
       })
       const r = await fetch(`${API}/api/simulator/missions?${params}`)
@@ -946,7 +953,8 @@ export default function Simulator() {
     setTrajLoading(true)
     try {
       const r = await fetch(
-        `${API}/api/simulator/trajectory?mission_id=${mission.mission_id}&data=${encodeURIComponent(dataPath)}`
+        `${API}/api/simulator/trajectory?mission_id=${mission.mission_id}` +
+        (dataPath ? `&data=${encodeURIComponent(dataPath)}` : '')
       )
       if (!r.ok) throw new Error(await r.text())
       const data = await r.json()
@@ -1030,7 +1038,7 @@ export default function Simulator() {
 
     const url = `${API}/api/simulator/stream?` + new URLSearchParams({
       mission_id:      String(activeMissionId),
-      data:            dataPath,
+      ...(dataPath ? { data: dataPath } : {}),
       threshold:       String(threshold),
       min_elapsed_pct: String(minElapsed),
       step_delay_ms:   '10',   // always stream fast; playback speed is frontend-controlled
@@ -1238,9 +1246,10 @@ export default function Simulator() {
         <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
 
           <div>
-            <div style={labelStyle}>DATASET PATH</div>
+            <div style={labelStyle}>DATASET PATH — OPTIONAL OVERRIDE</div>
             <input className="field-input" style={{ width: '300px', fontSize: '10px' }}
               value={dataPath} onChange={e => setDataPath(e.target.value)}
+              placeholder="server default ($ORBITGUARD_DATA)"
               disabled={isActive || loadingList} />
           </div>
 
