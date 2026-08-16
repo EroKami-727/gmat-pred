@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import LandingPage from './LandingPage'
+import { API } from './lib/api'
 import Overview from './panels/Overview'
 import Training from './panels/Training'
 import Ablation from './panels/Ablation'
@@ -11,7 +12,69 @@ import Report from './panels/Report'
 const TABS = ['REPORT', 'OVERVIEW', 'SIMULATOR', 'TRAINING', 'ABLATION', 'EXPERIMENTS', 'DATASET']
 const PANELS = { REPORT: Report, OVERVIEW: Overview, SIMULATOR: Simulator, TRAINING: Training, ABLATION: Ablation, EXPERIMENTS: Experiments, DATASET: Dataset }
 
+// Header status lamps.
+//
+// These three read-outs used to be hardcoded strings — "ALLOCATED // 98%",
+// "MOUNTED // SECURE", "IDLE_READY" — rendered on every screen of the dashboard
+// regardless of what the backend was doing, or whether there was a backend at
+// all. A GPU utilisation figure that is a string literal is worse than no
+// figure: it is the one number an operator would trust at a glance.
+//
+// They now poll /api/system and degrade honestly: unreachable backend shows
+// OFFLINE in red rather than three reassuring green lamps.
+const OFFLINE = [
+  { dot: 'var(--red)', label: 'SYS_GPU_01',   value: 'OFFLINE' },
+  { dot: 'var(--red)', label: 'DATASET_VOL',  value: 'UNREACHABLE' },
+  { dot: 'var(--red)', label: 'MODEL_STATUS', value: 'NO_BACKEND' },
+]
+
+function useSystemStatus(pollMs = 5000) {
+  const [lamps, setLamps] = useState(OFFLINE)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const read = async () => {
+      try {
+        const r = await fetch(`${API}/api/system`)
+        if (!r.ok) throw new Error(String(r.status))
+        const s = await r.json()
+        if (cancelled) return
+
+        const gpu = s.device === 'cuda'
+          ? { dot: 'var(--green)', label: 'SYS_GPU_01',
+              value: `${s.gpu_mem_used_gb ?? 0} / ${s.gpu_mem_total_gb ?? '?'} GB // ${s.gpu_util_pct ?? 0}%` }
+          : { dot: '#ffaa00', label: 'SYS_GPU_01', value: 'CPU ONLY // NO CUDA' }
+
+        const vol = s.dataset_mounted
+          ? { dot: 'var(--green)', label: 'DATASET_VOL',
+              value: `MOUNTED // ${s.dataset_size_gb ?? '?'} GB` }
+          : { dot: 'var(--red)', label: 'DATASET_VOL', value: 'NOT MOUNTED' }
+
+        const jobs = s.active_training_jobs?.length ?? 0
+        const nPlanets = s.planets_loaded?.length ?? 0
+        const model = jobs > 0
+          ? { dot: '#ffaa00', label: 'MODEL_STATUS', value: `TRAINING // ${jobs} JOB${jobs > 1 ? 'S' : ''}` }
+          : nPlanets > 0
+            ? { dot: 'var(--green)', label: 'MODEL_STATUS', value: `READY // ${nPlanets} PLANETS` }
+            : { dot: 'var(--red)', label: 'MODEL_STATUS', value: 'NO MODEL LOADED' }
+
+        setLamps([gpu, vol, model])
+      } catch {
+        if (!cancelled) setLamps(OFFLINE)
+      }
+    }
+
+    read()
+    const id = setInterval(read, pollMs)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [pollMs])
+
+  return lamps
+}
+
 function Header({ onBack }) {
+  const lamps = useSystemStatus()
   return (
     <header style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -41,11 +104,7 @@ function Header({ onBack }) {
       </div>
 
       <div style={{ display: 'flex' }}>
-        {[
-          { dot: '#ffaa00', label: 'SYS_GPU_01', value: 'ALLOCATED // 98%' },
-          { dot: 'var(--cyan)', label: 'DATASET_VOL', value: 'MOUNTED // SECURE' },
-          { dot: 'var(--green)', label: 'MODEL_STATUS', value: 'IDLE_READY' },
-        ].map(({ dot, label, value }) => (
+        {lamps.map(({ dot, label, value }) => (
           <div key={label} style={{ padding: '0 22px', borderLeft: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-dim)', letterSpacing: '0.06em' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: dot, boxShadow: `0 0 6px ${dot}`, animation: 'pulse 2s ease-in-out infinite', display: 'inline-block' }} />
