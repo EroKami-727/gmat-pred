@@ -21,8 +21,15 @@ tqdm==4.70.0
 # per-planet Transformers were trained under. CPU-only reviewers can drop the
 # +cu130 local version and install plain torch==2.13.0.
 torch==2.13.0
-scikit-learn==1.9.0
 xgboost==3.4.1           # T0 launch-parameter screen and the per-planet tree assist
+
+# The legacy G1/G2 scaler pickles under models/*/scaler_*.pkl were written by
+# scikit-learn 1.8.0, so loading them here raises InconsistentVersionWarning.
+# That is expected and harmless: the current per-planet models store their
+# normalisation as norm_stats.npz and load no pickles at all. Only the legacy
+# model path in src/api/main.py touches those files. Pinned forward rather than
+# back because nothing reported depends on them.
+scikit-learn==1.9.0
 
 # --- serving ------------------------------------------------------------------
 fastapi==0.141.1
