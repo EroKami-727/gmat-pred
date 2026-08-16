@@ -1,5 +1,13 @@
 # OrbitGuard Error Analysis — Weak Held-Out Cases
 
+> **SUPERSEDED — generation G2 (2026-06-21 to 06-23).**
+> Describes the local 80K reproduction and the multi-planet Transformer
+> at 87.67% accuracy / F1 0.838. The current models are the per-planet G3
+> rebuild (F1 0.9981), trained differently and evaluated on a different
+> split. Retained for provenance and for the analyses that still stand
+> (feature-shift error analysis, target-upweighting experiment).
+> See [`README.md`](README.md) for the generation map.
+
 Generated from calibrated leave-one-target-out and parameter-corridor-holdout
 audit artifacts. Each case below has summary-mode F1 < 0.7 at the default 0.5
 decision threshold. For every case: success rate, predicted-probability

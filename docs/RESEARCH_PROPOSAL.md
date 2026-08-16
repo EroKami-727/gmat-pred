@@ -1,8 +1,11 @@
 # Research Proposal — OrbitGuard
 
-**Draft, 2026-08-02.** Numbers here are measured on the local 80,000-mission
-dataset and reproducible from this repository. Claims are separated into what
-the current data supports and what it does not.
+**Draft, 2026-08-02. Numbers refreshed 2026-08-16** after removing two
+selection biases from the economics evaluation (see §7). Measured on the local
+80,000-mission generation, of which the seven-target study set is 70,000, and
+reproducible from this repository. Claims are separated into what the current
+data supports and what it does not; the full list is in
+[`LIMITATIONS.md`](LIMITATIONS.md).
 
 ---
 
@@ -14,9 +17,9 @@ recovered by a learned screen, and where in the pipeline the screen should sit.
 
 The headline finding is a negative one that reframes the problem. On a
 deterministic simulator, a six-feature classifier over launch parameters prunes
-**64.6% of propagation cost while discarding 0.8% of good missions** — and a
+**64.5% of propagation cost while discarding 0.76% of good missions** — and a
 sequence model reading 40% of the trajectory does strictly worse on the same
-budget (38.9% saved). The trajectory is the integral of the injection state and
+budget (38.3% saved). The trajectory is the integral of the injection state and
 carries no additional information.
 
 The second contribution is methodological, and it is the part most likely to
@@ -44,15 +47,22 @@ standardisation, Mars val AUC 0.939 → 0.998 from normalisation alone.
 Compute charged in propagation-days across a ~100× cost range (Mercury 127 d to
 Neptune 13,419 d), at a fixed 99% failure-recall operating point:
 
-| Screen | Compute saved | Good missions destroyed |
-|--------|---------------|-------------------------|
-| T0 — launch parameters, before propagating | **64.6%** | **0.8%** |
-| T40 — telemetry Transformer at 40% | 38.9% | 0.2% |
-| Cascade — T0 where confident, else T40 | 65.5% | 1.3% |
+| Screen | Compute saved | Good missions destroyed | Failure recall |
+|--------|---------------|-------------------------|----------------|
+| T0 — launch parameters, before propagating | **64.5%** | **0.76%** | 99.06% |
+| T40 — telemetry Transformer at 40% | 38.3% | 0.21% | 98.87% |
+| Cascade — T0 where confident, else T40 | 65.0% | 1.62% | 99.94% |
 
 T0 also predicts *how* a mission fails at 0.96–0.99, matching the sequence
 model. Logistic regression on the same features scores AUC 0.49 — chance — so
 nonlinearity is essential even though sequence modelling is not.
+
+Thresholds are fitted on validation and reported on an untouched test split; the
+recall column is what the operating point achieves out of sample rather than a
+target met by construction. An earlier version of this table was produced with
+test-set thresholding and an evaluation set that overlapped the sequence model's
+validation split — correcting both moved the headline by less than 0.1 pp
+(`src/ml/prune_economics.py` documents the protocol).
 
 **C3 — Rare-mode failure of a sequence model against a demonstrable signal.**
 Uranus `surface_impact` (119 of 6,611 failures) had sequence recall 0.000, while
@@ -63,8 +73,9 @@ speculative. Fusing a per-planet tree assist at the decision window raised
 overall held-out F1 from 0.9960 to **0.9981** (recall 0.9991, 5 false negatives
 in 8,400 missions).
 
-**C4 — Dataset and reproducible harness.** 80,000 GMAT-derived missions across
-seven targets, per-planet models, a mission builder that reuses the dataset's
+**C4 — Dataset and reproducible harness.** 70,000 GMAT-derived missions across
+seven interplanetary targets — drawn from an 80,000-mission eight-target
+generation, with Moon excluded from the study as a non-interplanetary regime — per-planet models, a mission builder that reuses the dataset's
 own propagator so user-defined missions are in-distribution, and an end-to-end
 simulator.
 
@@ -155,9 +166,11 @@ task is solved by six tabular features and the paper's own baseline shows it.
 ## 6. Reproduction
 
 ```bash
+export ORBITGUARD_DATA=/path/to/merged_all_v2   # see docs/ENVIRONMENT.md
+
 # Per-planet extracts (one streaming pass) + models + tree assist
 setsid nohup ./run_pipeline.sh > /dev/null 2>&1 &
-python -m src.data_collection.recover_mission_ids --data $DATA
+python -m src.data_collection.recover_mission_ids
 python -m src.ml.train_assist --all
 python -m src.ml.recalibrate
 
@@ -168,3 +181,34 @@ python -m src.ml.prune_economics        # compute saved vs missions destroyed
 
 Full decision history, including the two analyses invalidated by a positional
 join and their corrections, is in [`RESEARCH_LEDGER.md`](RESEARCH_LEDGER.md).
+
+---
+
+## 7. Evaluation protocol, and a correction to it
+
+The economics table was originally produced under two selection biases. Both
+have been removed and the table above is the corrected run; the headline moved
+by less than 0.1 pp.
+
+**Thresholds were fitted on the test labels.** The 99%-failure-recall operating
+point was chosen using the test split's own labels, which no deployed screen can
+do. Thresholds are now fitted on validation and applied unchanged to test, so
+the reported recall is a measured out-of-sample quantity (99.06% weighted)
+rather than 99% by construction.
+
+**The evaluation set contained the sequence model's validation split.** The
+economics script drew its own 70/30 partition at seed 42 while the trainer used
+70/15/15 at the same seed — the same permutation, so the "test" set was exactly
+the model's validation plus test split. Half the missions the T40 screen was
+scored on were the ones its checkpoint and abort threshold had been selected on.
+`src/ml/splits.py` is now the single definition of the partition, shared by the
+trainer, the economics script and the test harness.
+
+Both biases flattered **T40** — the screen this analysis concludes against — so
+the negative result survives its own correction. That is the strongest form the
+claim can take, and it is why the correction is reported rather than quietly
+applied: reviewers should be able to see that the conclusion does not depend on
+the evaluation being generous to the alternative.
+
+Single-seed remains an open limitation (WP4); see
+[`LIMITATIONS.md`](LIMITATIONS.md) §1.

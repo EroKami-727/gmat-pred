@@ -628,3 +628,95 @@ honest conclusion is that input-space screening dominates. Making the sequential
 framing viable requires data where the outcome is *not* determined at t=0
 (mid-flight perturbations, unmodelled dynamics, or sensor noise) — new data
 generation, not new modelling.
+
+## Evaluation Hardening (2026-08-16)
+
+A pre-writeup audit pass. No modelling changes; the models on disk are the ones
+trained on 2026-08-02. What changed is how they are evaluated, what is committed,
+and which documents are allowed to be quoted.
+
+### Two selection biases in the economics table, found and removed
+
+`prune_economics.py` produced the headline table under two biases:
+
+1. **Oracle thresholding.** `threshold_at_recall()` was called with the test
+   split's own labels, so the 99%-failure-recall operating point was chosen with
+   knowledge of the answers. No deployed screen can do that.
+2. **Contaminated evaluation set.** The script drew its own 70/30 partition at
+   seed 42 while `per_planet_train.py` used 70/15/15 at seed 42 — same seed,
+   same N, therefore the same permutation. Its "test" set was exactly the
+   model's validation split plus its test split. Verified directly: 1,500 of the
+   3,000 missions scored per planet were the ones the checkpoint and abort
+   threshold had been selected on. Zero overlap with the training rows, so this
+   was model-selection leakage rather than train-on-test.
+
+Corrected protocol: thresholds fitted on validation, applied unchanged to the
+untouched test 15%, achieved recall reported as a measured quantity.
+
+| Screen | Published | Corrected |
+|--------|-----------|-----------|
+| T0 compute saved | 64.6% | 64.5% |
+| T0 good missions destroyed | 0.8% | 0.76% |
+| T40 compute saved | 38.9% | 38.3% |
+| T40 good missions destroyed | 0.2% | 0.21% |
+| Cascade saved / destroyed | 65.5% / 1.3% | 65.0% / 1.62% |
+| T0 failure recall | 99% by construction | 99.06% measured |
+
+The conclusion is unchanged and the headline moved by 0.1 pp. Worth stating
+explicitly: **both biases flattered T40**, the screen this analysis concludes
+against, so the negative result survives its own correction. The cascade looks
+slightly worse than before (1.62% vs 1.3% false prunes) because its confidence
+quantile is now selected on validation too, which is the honest version.
+
+Root cause of (2) was three independent copies of the split arithmetic —
+`per_planet_train.py`, `test_ml.py` (carrying the comment "must stay in sync with
+it") and `prune_economics.py`. Two agreed and one did not. `src/ml/splits.py` is
+now the single definition; the comment-enforced invariant is gone.
+
+### Moon: excluded by decision rather than by accident
+
+The economics table has always covered seven targets, because `moon.npz` was
+regenerated after `recover_mission_ids.py` ran and therefore lacks the
+`mission_ids` key, and the script printed a skip line and continued. Nothing
+recorded this.
+
+Moon is now excluded on the merits — not an interplanetary transfer, 6-day
+trajectory inside Earth's SOI at 60 s cadence against 127–13,419 propagation-day
+heliocentric transfers at 15 h, sharing neither the cost structure the economics
+are built on nor the dynamical regime, and already the worst LOTO case
+(AUC 0.296). `planet_config.py` now distinguishes `PLANETS` (seven-target study
+set, everything reported) from `SERVING_TARGETS` (eight, what the router and API
+load). The live simulator still offers Moon.
+
+Reported results are therefore 70,000 missions across seven targets, from an
+80,000-mission eight-target generation.
+
+### Documentation: three generations, now labelled
+
+`docs/` had accumulated results from three model generations with nothing
+marking which was current, so sequence-model accuracy appeared as 79.73% (G1),
+87.67% (G2) and 99.81% (G3) in three files, all correct for their generation and
+mutually contradictory as written. Added `docs/README.md` as the generation map,
+banners on the eight superseded documents, and `docs/LIMITATIONS.md`.
+
+`REVIEWER_RISK_REGISTER.md` was rewritten rather than bannered: it is
+forward-looking guidance and was steering claims using a model that no longer
+exists. Its Risk 2 ("the Transformer is not the best model") was stale in its
+stated form — the G3 per-planet model reaches F1 0.9981 — but the conclusion it
+guarded survives in a stronger form, now stated as the T0-vs-T40 comparison.
+
+### Reproducibility
+
+- `src/paths.py` resolves the dataset root from `$ORBITGUARD_DATA`; the
+  reference machine's absolute path had been pasted into nine files.
+- `reports/` result artifacts (JSON/TeX/MD, ~536 KB) are now tracked. Every
+  number in `docs/` derives from one of these and none were committed, so no
+  claim had anything on disk backing it.
+- `requirements.txt` pinned to the versions the results were produced under.
+  `numba` was missing entirely, which had made `experiments/numba_jit/` silently
+  unrunnable.
+
+### Still open
+
+Single-seed headline results (WP4) — documented in `LIMITATIONS.md` §1 rather
+than closed. ~1 hour of compute; not spent yet. Report as point estimates.

@@ -1,6 +1,14 @@
 # OrbitGuard — Progress Report
 
-> **What this project does in one sentence:** OrbitGuard watches a spacecraft's early flight path and predicts whether the mission will succeed or fail — so we can cancel doomed simulations before they waste hours of compute.
+> **What this project does in one sentence:** OrbitGuard predicts whether a
+> Monte Carlo trajectory simulation will succeed or fail, early enough to skip
+> the ones that were doomed at injection — and quantifies *where in the pipeline*
+> that screen should sit.
+
+> **This is a progress report spanning three model generations, and results from
+> all three appear below.** Read [`docs/README.md`](docs/README.md) first for the
+> map of which is which; rows in the tables are marked `G1`/`G2`/`G3`. Current
+> results are G3.
 
 ---
 
@@ -8,7 +16,13 @@
 
 NASA GMAT runs Monte Carlo simulations to test spacecraft trajectories. Most of these simulations fail. The problem is that GMAT doesn't know a mission is doomed until it finishes running the full trajectory — which can take a long time for outer planets.
 
-OrbitGuard fixes this: a machine learning model watches just the **first 40% of the trajectory** and makes a Go/No-Go call. This saves up to **80% of compute** per simulation batch.
+OrbitGuard screens those missions out. A model reading the **first 40% of the
+trajectory** makes a Go/No-Go call and saves 38% of propagation compute — but
+the project's own baseline does better: screening on the six launch parameters
+*before propagating at all* saves **64.5%**, because this simulator is
+deterministic and the outcome is fixed at t=0. That negative result is the
+main finding, not a footnote; see
+[Does the trajectory actually help?](#does-the-trajectory-actually-help-srcmlprune_economicspy)
 
 ---
 
@@ -33,17 +47,25 @@ OrbitGuard fixes this: a machine learning model watches just the **first 40% of 
 
 ## Key Numbers at a Glance
 
-| Metric | Value | Notes |
-|--------|-------|-------|
-| Total missions | **80,000** | 8 planets × 10K each |
-| Dataset size | ~71 GB | merged_all_v2, Parquet |
-| Overall success rate | 32.0% | Matches teammate's earlier independent run |
-| Best F1 (XGBoost-summary) | **0.992 ± 0.001** | 5-seed confidence interval |
-| Best AUC (XGBoost-summary) | **1.000 ± 0.000** | 5-seed CI |
-| Transformer AUC (calibrated) | **0.984** | Multi-planet, 50 epochs |
-| Transformer F1 (tuned threshold) | **0.921** | Up from 0.838 at default 0.5 |
-| Calibration ECE (isotonic) | **0.0045** | 11.5× better than uncalibrated |
-| JIT speedup | **26–37×** | Neptune generation |
+| Metric | Value | Gen | Notes |
+|--------|-------|-----|-------|
+| Missions generated | **80,000** | — | 8 targets × 10K each |
+| Missions in the study set | **70,000** | G3 | 7 targets; Moon excluded, see [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) §7 |
+| Dataset size | ~71 GB | — | merged_all_v2, Parquet |
+| Overall success rate | 32.0% | — | Matches teammate's earlier independent run |
+| **Per-planet held-out F1** | **0.9981** | **G3** | Current models, with tree assist |
+| **Compute saved, T0 screen** | **64.5%** | **G3** | at 0.76% good missions destroyed |
+| **Compute saved, T40 screen** | **38.3%** | **G3** | at 0.21% good missions destroyed |
+| Best F1 (XGBoost-summary) | 0.992 ± 0.001 | G2 | 5-seed CI, random split |
+| Best AUC (XGBoost-summary) | 1.000 ± 0.000 | G2 | 5-seed CI |
+| Transformer AUC (calibrated) | 0.984 | G2 | Multi-planet, 50 epochs — superseded |
+| Transformer F1 (tuned threshold) | 0.921 | G2 | Up from 0.838 at default 0.5 — superseded |
+| Calibration ECE (isotonic) | 0.0045 | G2 | 11.5× better than uncalibrated |
+| JIT speedup | **26–37×** | — | Neptune generation, infrastructure |
+
+> G2 Transformer rows describe the multi-planet model that the per-planet G3
+> rebuild replaced. They are kept because the calibration and domain-generalisation
+> analyses were run against them; they do not describe any model currently on disk.
 
 ---
 
@@ -223,8 +245,9 @@ in-distribution at any point of the stream rather than only at the 40% horizon.
 | Neptune | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.9293 |
 | **Overall** | — | **0.9983** | **0.9959** | **0.9971** | **0.9773** |
 
-11 false negatives in 9,600 held-out missions. All eight targets carry a fused
-tree assist.
+11 false negatives in 9,600 held-out missions. All eight trained targets carry a
+fused tree assist; the seven interplanetary ones make up the reported study set,
+and Moon is served but not reported.
 
 **Moon** was missing entirely until 2026-08-02: it has 10,000 missions in the
 dataset (85M rows, 6-day transfers at 60 s cadence) but was never extracted or
@@ -261,17 +284,20 @@ failure mode. The tree only contributes at the fixed decision window.
 The honest answer for this dataset is **no**. Screening from the 6 launch-burn
 offsets *before running anything* matches the telemetry model and costs nothing:
 
-| Screen | Compute saved | Good missions destroyed |
-|--------|---------------|-------------------------|
-| **T0** — launch parameters, before propagating | **64.6%** | **0.8%** |
-| T40 — telemetry Transformer at 40% | 38.9% | 0.2% |
-| Cascade — T0 where confident, else T40 | 65.5% | 1.3% |
+| Screen | Compute saved | Good missions destroyed | Failure recall |
+|--------|---------------|-------------------------|----------------|
+| **T0** — launch parameters, before propagating | **64.5%** | **0.76%** | 99.06% |
+| T40 — telemetry Transformer at 40% | 38.3% | 0.21% | 98.87% |
+| Cascade — T0 where confident, else T40 | 65.0% | 1.62% | 99.94% |
 
-Compute is charged in propagation-days at 99% failure recall. T0 reaches
-AUC 0.9975–1.0000 per planet and predicts the failure *mode* at 0.96–0.99,
+Seven interplanetary targets (Moon excluded — see `EXCLUDED_TARGETS` in
+`src/ml/planet_config.py`). Compute is charged in propagation-days. The
+operating point targets 99% failure recall **on validation**; the recall column
+is what that threshold then achieves on the untouched test split. T0 reaches
+AUC 0.9961–1.0000 per planet and predicts the failure *mode* at 0.96–0.99,
 matching the sequence model on both tasks.
 
-The cascade does not pay for itself: it buys 0.9 pp of savings for 0.5 pp more
+The cascade does not pay for itself: it buys 0.5 pp of savings for 0.9 pp more
 false prunes. **A 6-feature tabular classifier is sufficient for pruning here.**
 
 This is expected once stated plainly: the simulator is deterministic, so the

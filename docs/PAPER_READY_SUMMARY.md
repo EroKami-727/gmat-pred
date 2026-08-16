@@ -1,5 +1,13 @@
 # OrbitGuard — Paper-Ready Summary (Local Reproduction, 2026-06-21)
 
+> **SUPERSEDED — generation G2 (2026-06-21 to 06-23).**
+> Describes the local 80K reproduction and the multi-planet Transformer
+> at 87.67% accuracy / F1 0.838. The current models are the per-planet G3
+> rebuild (F1 0.9981), trained differently and evaluated on a different
+> split. Retained for provenance and for the analyses that still stand
+> (feature-shift error analysis, target-upweighting experiment).
+> See [`README.md`](README.md) for the generation map.
+
 Consolidates every artifact produced during the local 80K-mission
 reproduction pass. All numbers below are from this machine's independently
 generated dataset (`/media/Data/Coding/gmat-pred/data/merged_all_v2/`),

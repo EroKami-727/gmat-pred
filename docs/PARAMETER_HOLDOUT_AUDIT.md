@@ -1,5 +1,13 @@
 # OrbitGuard Parameter-Corridor Holdout Audit
 
+> **SUPERSEDED — generation G1 (2026-06-10 to 06-16).**
+> Describes the XGBoost audit pass and the original multi-planet
+> Transformer (79.73% accuracy, F1 0.745). The current models are the
+> per-planet G3 rebuild (F1 0.9981) and none of the model numbers below
+> describe them. The *split-design* findings — that random splits are too
+> easy, and that unseen-target transfer fails — do carry over.
+> See [`README.md`](README.md) for the generation map.
+
 ## Purpose
 
 This audit tests the paper-relevant generalization claim: can a model trained
