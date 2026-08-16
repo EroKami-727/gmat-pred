@@ -1,12 +1,40 @@
-pandas
-numpy
-scipy
-tqdm
-pyarrow
-fastparquet
-matplotlib
-torch
-scikit-learn
-xgboost
-fastapi
-uvicorn[standard]
+# OrbitGuard dependencies.
+#
+# Versions are the ones the reported results were produced with, pinned so a
+# reviewer reproducing the paper gets the same numbers rather than whatever
+# resolves today. Interpreter: CPython 3.12 (see docs/ENVIRONMENT.md).
+#
+# Install:
+#   uv venv --python 3.12 ~/Coding/venvs/gmat-pred
+#   VIRTUAL_ENV=~/Coding/venvs/gmat-pred uv pip install -r requirements.txt
+
+# --- core numerics / data -----------------------------------------------------
+numpy==2.5.2
+pandas==3.0.5
+scipy==1.18.0
+pyarrow==25.0.1          # parquet reader used for the streaming mission tables
+fastparquet==2026.5.0
+tqdm==4.70.0
+
+# --- models -------------------------------------------------------------------
+# torch is installed from the CUDA 13.0 index; the pin below is the version the
+# per-planet Transformers were trained under. CPU-only reviewers can drop the
+# +cu130 local version and install plain torch==2.13.0.
+torch==2.13.0
+scikit-learn==1.9.0
+xgboost==3.4.1           # T0 launch-parameter screen and the per-planet tree assist
+
+# --- serving ------------------------------------------------------------------
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+
+# --- figures ------------------------------------------------------------------
+matplotlib==3.11.1
+seaborn==0.13.2          # only src/data_collection/eda_report.py
+
+# --- fast propagator ----------------------------------------------------------
+# Required by experiments/numba_jit/, the 26-37x RK4 fast path used to generate
+# the Neptune dataset (docs/NUMBA_JIT_PROPAGATOR.md). This was missing from the
+# environment for a while, which made that whole directory silently unrunnable.
+numba==0.67.0
+llvmlite==0.49.0
