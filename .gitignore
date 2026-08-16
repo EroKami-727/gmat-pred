@@ -26,6 +26,9 @@ gmat_scripts/output/
 # Logs
 *.log
 
+# Tool caches written into the repo root at runtime
+.matplotlib/
+
 # OS
 .DS_Store
 Thumbs.db
