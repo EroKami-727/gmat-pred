@@ -25,22 +25,22 @@ PY
 Expected on the reference machine: numpy 2.5.2, torch 2.13.0+cu130 with CUDA
 available, numba 0.67.0.
 
-## Trap: the repo-local `.venv/` is not the environment
+## Trap: do not create a repo-local `.venv/`
 
-There is a `.venv/` directory at the repo root. **It is not the project
-environment and nothing should use it.** It is a Python 3.14 stub containing
+A `.venv/` directory used to sit at the repo root: a Python 3.14 stub holding
 only `fastapi`, `uvicorn`, `click`, `pip` and their transitive deps — no numpy,
-no torch, no xgboost.
+no torch, no xgboost. **It has been deleted.** Do not recreate one.
 
-It is dangerous precisely because it looks right: editors and language servers
+It was dangerous precisely because it looked right. Editors and language servers
 auto-select a repo-local `.venv/` over anything else, so the Python extension
-reports every scientific import as missing and any command run through the
-editor's selected interpreter dies with `ModuleNotFoundError: No module named
-'numpy'`. It is gitignored, so it never shows up in a diff either.
+reported every scientific import as missing and any command run through the
+editor's selected interpreter died with `ModuleNotFoundError: No module named
+'numpy'` — while the same command run against the real interpreter worked fine.
+It is gitignored, so it never appeared in a diff to explain itself.
 
-If your editor reports numpy/torch/pandas as uninstalled, it has selected this
-stub. Point the interpreter at the path at the top of this file, or delete
-`.venv/` outright — it is trivially recreatable and holds nothing of value.
+`.venv/` stays in `.gitignore` so an accidental recreation is not committed. If
+your editor reports numpy/torch/pandas as uninstalled, it has selected a stub
+like that one: point the interpreter at the path at the top of this file.
 
 ## Rebuilding from scratch
 
