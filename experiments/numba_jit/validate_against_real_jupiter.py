@@ -12,8 +12,12 @@ check: same physics inputs, same code paths except the JIT'd substep loop.
 Usage
 -----
   python -m experiments.numba_jit.validate_against_real_jupiter \\
-      --real-dir /media/Data/Coding/gmat-pred/data/jupiter \\
+      --real-dir "$ORBITGUARD_RAW/jupiter" \\
       --n-sample 50 --time-step 54000
+
+--real-dir defaults to <ORBITGUARD_DATA>/../jupiter, i.e. the per-planet raw
+generation output that sits alongside the merged dataset. Pass it explicitly if
+your layout differs.
 """
 
 from __future__ import annotations
@@ -30,7 +34,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data_collection.generator import MissionParams
+from src.paths import data_root
 from experiments.numba_jit.runner_numba import run_synthetic_numba
+
+# Raw per-planet generation output sits next to the merged dataset rather than
+# inside it, so derive it from the same env-configurable root (src/paths.py)
+# instead of hardcoding one machine's absolute path.
+DEFAULT_REAL_DIR = data_root().parent / "jupiter"
 
 
 NUMERIC_COLS = [
@@ -61,7 +71,7 @@ def load_real_rows(real_dir: Path, sim_ids: list[int]) -> dict[int, pd.DataFrame
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--real-dir", default="/media/Data/Coding/gmat-pred/data/jupiter")
+    parser.add_argument("--real-dir", default=str(DEFAULT_REAL_DIR))
     parser.add_argument("--n-sample", type=int, default=50)
     parser.add_argument("--time-step", type=float, default=54000.0)
     args = parser.parse_args()

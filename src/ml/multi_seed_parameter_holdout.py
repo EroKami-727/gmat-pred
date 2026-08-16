@@ -9,8 +9,8 @@ reuses it across all seeds x bins x feature-modes.
 Usage
 -----
   python -m src.ml.multi_seed_parameter_holdout \\
-      --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet \\
-      --params /media/Data/Coding/gmat-pred/data/merged_all_v2/mission_params.parquet \\
+      --data $ORBITGUARD_DATA/missions.parquet \\
+      --params $ORBITGUARD_DATA/mission_params.parquet \\
       --seeds 0 1 2 3 4 \\
       --variables TOI_V AOP \\
       --output reports/baselines/parameter_holdout_multiseed.json

@@ -14,7 +14,7 @@ Saves results to models/thresholds.json, which the RegimeRouter reads at load ti
 
 Usage:
     python -m src.ml.per_target_calibration \\
-        --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet \\
+        --data $ORBITGUARD_DATA/missions.parquet \\
         --models-dir models \\
         --early-exit 0.4 \\
         --output models/thresholds.json

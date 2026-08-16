@@ -10,7 +10,7 @@ each .npz with a `mission_ids` array.
 
 Usage:
     python -m src.data_collection.recover_mission_ids \
-        --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet
+        --data $ORBITGUARD_DATA/missions.parquet
 """
 
 from __future__ import annotations

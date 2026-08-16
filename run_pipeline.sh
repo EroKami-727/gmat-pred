@@ -9,7 +9,7 @@ set -u
 cd /home/haise/Coding/Projects/gmat-pred || exit 1
 
 VENV=/home/haise/Coding/venvs/gmat-pred/bin/python3
-DATA=/media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet
+DATA="${ORBITGUARD_DATA:-/media/Data/Coding/gmat-pred/data/merged_all_v2}/missions.parquet"
 LOGDIR=.runlogs
 mkdir -p "$LOGDIR"
 LOG="$LOGDIR/pipeline.log"

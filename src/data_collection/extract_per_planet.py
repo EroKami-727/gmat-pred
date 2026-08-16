@@ -15,7 +15,7 @@ and Neptune (21,471 raw rows) both yield comparable sequences.
 
 Usage:
     python -m src.data_collection.extract_per_planet \
-        --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet \
+        --data $ORBITGUARD_DATA/missions.parquet \
         --out-dir data/per_planet
 """
 

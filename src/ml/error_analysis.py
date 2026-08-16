@@ -18,8 +18,8 @@ and adds the one missing diagnostic: feature distribution shift.
 Usage
 -----
   python -m src.ml.error_analysis \\
-      --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet \\
-      --params /media/Data/Coding/gmat-pred/data/merged_all_v2/mission_params.parquet \\
+      --data $ORBITGUARD_DATA/missions.parquet \\
+      --params $ORBITGUARD_DATA/mission_params.parquet \\
       --grouped reports/baselines/leave_one_target_out_exit40_ds10_calibrated.json \\
       --parameter reports/baselines/parameter_holdout_exit40_ds10_calibrated.json \\
       --out docs/ERROR_ANALYSIS.md

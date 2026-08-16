@@ -19,7 +19,7 @@ parquet from disk for every seed.
 Usage
 -----
   python -m src.ml.formal_ablation \\
-      --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet \\
+      --data $ORBITGUARD_DATA/missions.parquet \\
       --seeds 0 1 2 3 4 \\
       --transformer-metrics models/transformer_multiplanet/metrics_transformer_binary.json \\
       --output reports/baselines/formal_ablation.json

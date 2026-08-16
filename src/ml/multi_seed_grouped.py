@@ -12,7 +12,7 @@ seeds x targets x feature-modes to avoid repeated expensive streaming.
 Usage
 -----
   python -m src.ml.multi_seed_grouped \\
-      --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet \\
+      --data $ORBITGUARD_DATA/missions.parquet \\
       --seeds 0 1 2 3 4 \\
       --feature-modes summary initial_no_context \\
       --output reports/baselines/leave_one_target_out_multiseed.json

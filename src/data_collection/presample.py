@@ -7,7 +7,7 @@ small local parquet so training temp-split files are tiny instead of 43 GB.
 
 Usage:
     python -m src.data_collection.presample \
-        --data /media/Data/Coding/gmat-pred/data/merged_all_v2/missions.parquet \
+        --data $ORBITGUARD_DATA/missions.parquet \
         --planets Jupiter Saturn Uranus Neptune \
         --downsample 50 \
         --out data/outer_ds50.parquet
