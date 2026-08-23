@@ -787,3 +787,67 @@ backend is unreachable.
 resolution, planet_info and threshold coverage over the serving set, per-target
 mission building, and an end-to-end abort. 24/24 passing. It exists because
 every defect in this section was invisible until someone opened the dashboard.
+
+## C1 Rebuilt, and Partly Refuted (2026-08-16, later)
+
+The normalisation ablation in "Per-Planet Model Rebuild" above — the table at
+§"Fix" item 2 showing Mars val AUC 0.9386 → 0.9976 from per-timestep
+normalisation alone — was never reproducible. No script produced it. It has now
+been rebuilt as `src/ml/norm_ablation.py`, and **the rebuilt experiment
+contradicts it.**
+
+### What the ablation actually shows
+
+Three conditions, identical architecture, seed and split; only pooling differs.
+
+| Target  | per-timestep | global (1 target) | grouped (regime group) | grouped output std |
+|---------|-------------|-------------------|------------------------|--------------------|
+| Venus   | 0.9999      | 0.9947            | **0.6037**             | **3.11e-05**       |
+| Mercury | 0.9994      | 0.9970            | 0.9069                 | 4.25e-01           |
+| Mars    | 0.9994      | 0.9972            | 0.9422                 | 4.06e-01           |
+| Jupiter | 1.0000      | 1.0000            | 0.9997                 | 4.75e-01           |
+
+Three corrections to the earlier account:
+
+1. **Pooling a single target's own timesteps does not cause the collapse.** The
+   "global" column costs at most 0.005 AUC. The old table attributed the effect
+   to this comparison; it is not there.
+2. **The collapse requires pooling across targets**, which is what the regime
+   models did. That is a sharper claim than "sharing a scaler", and it is the
+   one the paper now makes.
+3. **It is selective — one target of four.** Only Venus degenerates to a
+   constant. The others degrade and keep working. Severity does not follow the
+   signal ratio either: Jupiter is compressed harder than Mercury (0.0247 vs
+   0.0484) and loses far less, because its task is separable enough to survive
+   attenuation. Compression is necessary, not sufficient. The predictive rule
+   WP2 hoped for ("collapse when the ratio exceeds X") is **not supported**.
+
+Scope: this ablation isolates normalisation alone — one model per target, only
+the statistics pooled. The production incident additionally shared one model
+across the group. These numbers are a lower bound on that failure, not a
+reproduction of it.
+
+### The half that holds completely
+
+`src/ml/baseline_invariance.py` — XGBoost on the identical normalised window
+scores 0.9996–1.0000 under all three conditions, spread ≤ 0.0002. On Venus under
+grouped normalisation the tree reports **AUC 1.0000** while the network emits a
+constant at 0.6037. The baseline is blind to the defect on every target, not
+only the one that collapsed, so this result is not anecdotal.
+
+### C3 confirmed, with a denominator correction
+
+`src/ml/rare_mode_sweep.py`: Uranus `surface_impact` recall is exactly **0.0000**
+at mode_alpha 0.0, 0.5 and 1.0, while a tree on the identical window reaches AUC
+1.0000 and recall 1.0000. Optimisation limit, measured rather than asserted.
+
+The "45x" oversampling quoted here and in `train_assist.py` is against the
+majority failure mode (4113/91). Relative to uniform sampling — what the sampler
+applies — the maximum is **19.2x**. Both describe the same run; state the
+denominator when quoting either.
+
+### Consequence
+
+`RESEARCH_PROPOSAL.md` C1 is corrected in place. Anyone drafting from the
+proposal's original C1 wording would have written a claim this repository's own
+experiment refutes.

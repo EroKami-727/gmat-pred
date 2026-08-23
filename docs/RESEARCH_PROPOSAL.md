@@ -40,8 +40,20 @@ measured between-group ranking, not within-group discrimination.
 
 We give the diagnostic (compare a tree against the network under identical
 preprocessing; check per-group prediction variance), the mechanism, and a
-controlled ablation isolating the fix — per-group fitting plus per-timestep
-standardisation, Mars val AUC 0.939 → 0.998 from normalisation alone.
+controlled three-condition ablation (`src/ml/norm_ablation.py`,
+`reports/normalisation_ablation.json`).
+
+**Corrected 2026-08-16.** An earlier version of this section cited "Mars val AUC
+0.939 → 0.998 from normalisation alone", from a within-planet comparison that
+was never reproducible. The rebuilt ablation refutes it: pooling a single
+target's own timesteps costs at most 0.005 AUC. The collapse requires the scaler
+pooled *across targets*, and it is selective — Venus collapses to a constant
+(AUC 0.9999 → 0.6037, output std 3.11e-05) while Mercury, Mars and Jupiter lose
+0.0003–0.0925 AUC and keep working. Severity does not track the compression
+ratio, so no predictive rule is claimed. The baseline-blindness half holds on
+every target: XGBoost on identical input scores 0.9996–1.0000 under all three
+conditions (spread ≤ 0.0002). See `RESEARCH_LEDGER.md`, "C1 Rebuilt, and Partly
+Refuted".
 
 **C2 — A quantified pruning result, with the honest conclusion.**
 Compute charged in propagation-days across a ~100× cost range (Mercury 127 d to
