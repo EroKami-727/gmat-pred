@@ -52,6 +52,11 @@ from src.ml.planet_config import (
 # Prefix fractions (of each mission's own length) used for reporting.
 EVAL_FRACS = [0.10, 0.20, 0.30, 0.40]
 
+# Normalisation strategies. "per-timestep" is what production uses; "global" is
+# the superseded regime-model behaviour, kept runnable so the collapse it causes
+# stays a measurable result instead of a claim in the ledger.
+NORM_MODES = ("per-timestep", "global")
+
 
 # ── Normalisation ─────────────────────────────────────────────────────────────
 
@@ -79,6 +84,63 @@ def fit_timestep_stats(X: np.ndarray, lengths: np.ndarray) -> tuple[np.ndarray, 
         mu[unseen] = mu[last]
         sd[unseen] = sd[last]
     return mu, sd
+
+
+def fit_global_robust_stats(X: np.ndarray, lengths: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    ONE RobustScaler for the whole planet, pooled across every timestep.
+
+    This is the normalisation the superseded regime models used, reconstructed
+    so the collapse it causes can be measured rather than described. Centre is
+    the median and scale the IQR, matching sklearn's RobustScaler, fitted over
+    all valid training rows flattened to (N*L, F).
+
+    The difference from fit_timestep_stats is not the estimator but the pooling:
+    statistics come from the whole trajectory at once instead of from each
+    timestep index separately. Because a mission's features sweep a wide range
+    over its flight, the pooled IQR is dominated by that sweep, and the
+    mission-to-mission spread AT a given timestep — the only thing that
+    discriminates success from failure — is compressed to a small fraction of
+    the input range. In the cross-planet case that fraction reached ~1e-5 and
+    the network converged to a per-group constant.
+
+    Returned tiled to (L, F) so callers, the saved norm_stats.npz and the
+    serving router all stay identical between the two modes.
+    """
+    N, L, F = X.shape
+    return robust_stats_from_rows(valid_rows(X, lengths), L)
+
+
+def valid_rows(X: np.ndarray, lengths: np.ndarray) -> np.ndarray:
+    """Flatten (N, L, F) to (n_valid, F), dropping padded tail rows."""
+    L = X.shape[1]
+    return X[np.arange(L)[None, :] < lengths[:, None]]
+
+
+def robust_stats_from_rows(flat: np.ndarray, L: int) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Median/IQR over pooled rows, tiled to (L, F).
+
+    Split out from fit_global_robust_stats so the same estimator can be fitted
+    over rows pooled from SEVERAL planets — which is what the superseded regime
+    models did, and the condition that actually produced the collapse.
+    """
+    med = np.median(flat, axis=0)
+    q75, q25 = np.percentile(flat, [75, 25], axis=0)
+    iqr = q75 - q25
+    iqr[iqr < 1e-12] = 1.0                                     # constant feature
+    return (np.broadcast_to(med, (L, flat.shape[1])).copy(),
+            np.broadcast_to(iqr, (L, flat.shape[1])).copy())
+
+
+def fit_norm_stats(X: np.ndarray, lengths: np.ndarray,
+                   mode: str = "per-timestep") -> tuple[np.ndarray, np.ndarray]:
+    """Dispatch to the requested normalisation. See NORM_MODES."""
+    if mode == "per-timestep":
+        return fit_timestep_stats(X, lengths)
+    if mode == "global":
+        return fit_global_robust_stats(X, lengths)
+    raise ValueError(f"unknown norm mode {mode!r}; expected one of {NORM_MODES}")
 
 
 def apply_timestep_norm(X: np.ndarray, mu: np.ndarray, sd: np.ndarray) -> np.ndarray:
@@ -163,7 +225,9 @@ def mode_sample_weights(ft: np.ndarray, alpha: float) -> np.ndarray:
 
 def train_planet(planet: str, data_dir: Path, out_dir: Path,
                  epochs: int = 60, batch_size: int = 128, lr: float = 1e-3,
-                 seed: int = 42, device=None, mode_alpha: float = 0.5) -> dict:
+                 seed: int = 42, device=None, mode_alpha: float = 0.5,
+                 norm_mode: str = "per-timestep",
+                 norm_stats: tuple[np.ndarray, np.ndarray] | None = None) -> dict:
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     d = np.load(data_dir / f"{planet}.npz")
     X, y, ft, lengths = d["X"], d["y"], d["failure_type"], d["lengths"]
@@ -174,7 +238,10 @@ def train_planet(planet: str, data_dir: Path, out_dir: Path,
     tr, va, te = train_val_test(N, seed)
 
     # Stats fitted on TRAIN ONLY — no leakage into val/test.
-    mu, sd = fit_timestep_stats(X[tr], lengths[tr])
+    # norm_stats lets a caller supply statistics fitted elsewhere — e.g. pooled
+    # across a whole regime group, which no single-planet fit can express.
+    mu, sd = norm_stats if norm_stats is not None else fit_norm_stats(
+        X[tr], lengths[tr], norm_mode)
     Xn = torch.from_numpy(apply_timestep_norm(X, mu, sd))
     lengths_t = torch.from_numpy(lengths)
     y_t = torch.from_numpy(y.astype(np.float32))
@@ -309,6 +376,7 @@ def train_planet(planet: str, data_dir: Path, out_dir: Path,
             "f1": round(f1_test, 4), "tp": tp, "fp": fp, "fn": fn, "tn": tn,
         },
         "mode_alpha": mode_alpha,
+        "norm_mode": norm_mode,
         "failure_classes": {str(k): v for k, v in FAILURE_NAMES.items()},
         "aux_dim": N_FAILURE_CLASSES,
     }
@@ -327,6 +395,12 @@ def main():
     ap.add_argument("--batch-size", type=int, default=128)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--norm-mode", choices=NORM_MODES, default="per-timestep",
+                    help="Feature normalisation. 'per-timestep' standardises each "
+                         "feature against its distribution at that timestep index "
+                         "(production). 'global' pools every timestep into one "
+                         "RobustScaler, reproducing the superseded regime-model "
+                         "behaviour that collapsed the network to a constant.")
     ap.add_argument("--mode-alpha", type=float, default=0.5,
                     help="Failure-mode balancing strength for train sampling "
                          "(0 = off, 1 = equalise modes). Rare modes such as "
@@ -356,7 +430,7 @@ def main():
         meta = train_planet(planet, data_dir, out_root / planet,
                             epochs=args.epochs, batch_size=args.batch_size,
                             lr=args.lr, seed=args.seed, device=device,
-                            mode_alpha=args.mode_alpha)
+                            mode_alpha=args.mode_alpha, norm_mode=args.norm_mode)
         meta["train_seconds"] = round(time.time() - t0, 1)
         summary[planet] = meta
         thresholds[planet] = meta["threshold"]

@@ -29,6 +29,7 @@ import numpy as np
 from sklearn.metrics import roc_auc_score
 
 from src.ml.planet_config import FAILURE_NAMES, OPERATING_FRAC, SERVING_TARGETS
+from src.ml.splits import train_val_test
 
 SEED = 42
 
@@ -46,9 +47,12 @@ def build_features(X: np.ndarray, mu: np.ndarray, sd: np.ndarray, W: int) -> np.
 
 
 def splits(n: int, seed: int = SEED):
-    perm = np.random.default_rng(seed).permutation(n)
-    n_tr, n_va = int(0.70 * n), int(0.15 * n)
-    return perm[:n_tr], perm[n_tr:n_tr + n_va], perm[n_tr + n_va:]
+    """
+    The canonical partition. This was a fourth hand-rolled copy of the same
+    arithmetic; it agreed with the trainer, but so did two of the three copies
+    that already existed when one of them silently did not.
+    """
+    return train_val_test(n, seed)
 
 
 def train_one(planet: str, data_dir: Path, models_root: Path) -> dict | None:

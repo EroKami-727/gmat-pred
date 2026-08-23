@@ -60,6 +60,12 @@ trajectory.txt
 models/**/*.pt
 models/**/*.pkl
 
+# Ablation scratch runs. These train throwaway models purely to produce a
+# reports/ artifact; the checkpoints and their meta/history are not serving
+# state and must not be mistaken for the per-planet production models.
+models/_norm_ablation/
+models/_rare_mode_sweep/
+
 # Generated reports.
 #
 # The heavy artifacts (figures, checkpoints) stay out, but the RESULT files do

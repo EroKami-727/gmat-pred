@@ -1,0 +1,97 @@
+{
+  "description": "C1b: XGBoost on the same normalised decision window as the sequence model, under each normalisation condition",
+  "seed": 42,
+  "protocol": "features are the per-condition normalised prefix, flattened \u2014 build_features() from train_assist, the identical view the network receives; split from src/ml/splits.py",
+  "tree_auc_spread_across_conditions": {
+    "venus": 0.0,
+    "mars": 0.0002,
+    "mercury": 0.0001,
+    "jupiter": 0.0
+  },
+  "runs": [
+    {
+      "planet": "venus",
+      "norm_mode": "per-timestep",
+      "tree_auc": 1.0,
+      "tree_f1": 0.9975,
+      "window_steps": 24
+    },
+    {
+      "planet": "venus",
+      "norm_mode": "global",
+      "tree_auc": 1.0,
+      "tree_f1": 0.998,
+      "window_steps": 24
+    },
+    {
+      "planet": "venus",
+      "norm_mode": "grouped",
+      "tree_auc": 1.0,
+      "tree_f1": 0.9969,
+      "window_steps": 24
+    },
+    {
+      "planet": "mars",
+      "norm_mode": "per-timestep",
+      "tree_auc": 0.9996,
+      "tree_f1": 0.9951,
+      "window_steps": 14
+    },
+    {
+      "planet": "mars",
+      "norm_mode": "global",
+      "tree_auc": 0.9998,
+      "tree_f1": 0.9964,
+      "window_steps": 14
+    },
+    {
+      "planet": "mars",
+      "norm_mode": "grouped",
+      "tree_auc": 0.9998,
+      "tree_f1": 0.9951,
+      "window_steps": 14
+    },
+    {
+      "planet": "mercury",
+      "norm_mode": "per-timestep",
+      "tree_auc": 0.9997,
+      "tree_f1": 0.996,
+      "window_steps": 32
+    },
+    {
+      "planet": "mercury",
+      "norm_mode": "global",
+      "tree_auc": 0.9998,
+      "tree_f1": 0.9956,
+      "window_steps": 32
+    },
+    {
+      "planet": "mercury",
+      "norm_mode": "grouped",
+      "tree_auc": 0.9998,
+      "tree_f1": 0.9965,
+      "window_steps": 32
+    },
+    {
+      "planet": "jupiter",
+      "norm_mode": "per-timestep",
+      "tree_auc": 1.0,
+      "tree_f1": 0.9995,
+      "window_steps": 40
+    },
+    {
+      "planet": "jupiter",
+      "norm_mode": "global",
+      "tree_auc": 1.0,
+      "tree_f1": 1.0,
+      "window_steps": 40
+    },
+    {
+      "planet": "jupiter",
+      "norm_mode": "grouped",
+      "tree_auc": 1.0,
+      "tree_f1": 0.999,
+      "window_steps": 40
+    }
+  ]
+}

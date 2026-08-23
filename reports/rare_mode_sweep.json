@@ -1,0 +1,83 @@
+{
+  "planet": "uranus",
+  "seed": 42,
+  "epochs": 60,
+  "operating_frac": 0.4,
+  "rare_mode": "surface_impact",
+  "rare_mode_train_n": 91,
+  "n_train_failures": 4639,
+  "window_steps": 40,
+  "tree_reference": {
+    "auc": 1.0,
+    "recall_at_0.5": 1.0,
+    "n_test_rare": 12,
+    "note": "XGBoost on the identical per-timestep z-normalised window the sequence model receives, same split"
+  },
+  "best_sequence_rare_recall": 0.0,
+  "verdict": "optimisation limit \u2014 the tree separates the mode the sequence model cannot reach",
+  "runs": [
+    {
+      "mode_alpha": 0.0,
+      "effective_resample_factor": 1.0,
+      "test_f1": 0.9938,
+      "overall_failure_recall": 0.9877,
+      "rare_mode_recall": 0.0,
+      "per_mode_recall": {
+        "surface_impact": {
+          "n": 12,
+          "recall": 0.0
+        },
+        "orbit_too_high": {
+          "n": 877,
+          "recall": 1.0
+        },
+        "missed_target": {
+          "n": 87,
+          "recall": 1.0
+        }
+      }
+    },
+    {
+      "mode_alpha": 0.5,
+      "effective_resample_factor": 5.13,
+      "test_f1": 0.9938,
+      "overall_failure_recall": 0.9877,
+      "rare_mode_recall": 0.0,
+      "per_mode_recall": {
+        "surface_impact": {
+          "n": 12,
+          "recall": 0.0
+        },
+        "orbit_too_high": {
+          "n": 877,
+          "recall": 1.0
+        },
+        "missed_target": {
+          "n": 87,
+          "recall": 1.0
+        }
+      }
+    },
+    {
+      "mode_alpha": 1.0,
+      "effective_resample_factor": 19.23,
+      "test_f1": 0.9938,
+      "overall_failure_recall": 0.9877,
+      "rare_mode_recall": 0.0,
+      "per_mode_recall": {
+        "surface_impact": {
+          "n": 12,
+          "recall": 0.0
+        },
+        "orbit_too_high": {
+          "n": 877,
+          "recall": 1.0
+        },
+        "missed_target": {
+          "n": 87,
+          "recall": 1.0
+        }
+      }
+    }
+  ]
+}
