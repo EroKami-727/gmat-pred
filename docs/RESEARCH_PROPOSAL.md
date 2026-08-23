@@ -79,9 +79,16 @@ validation split — correcting both moved the headline by less than 0.1 pp
 **C3 — Rare-mode failure of a sequence model against a demonstrable signal.**
 Uranus `surface_impact` (119 of 6,611 failures) had sequence recall 0.000, while
 a tree on the *identical normalised input window* separated it at AUC 1.000.
-Resampling the mode up to 45× did not move recall at all. This is an
-optimisation limit, not an information limit, and it is measurable rather than
-speculative. Fusing a per-planet tree assist at the decision window raised
+Resampling the mode did not move recall at all. This is an optimisation limit,
+not an information limit, and it is now measured rather than asserted
+(`src/ml/rare_mode_sweep.py`, `reports/rare_mode_sweep.json`): recall is exactly
+0.0000 at mode_alpha 0.0, 0.5 and 1.0, against a tree at AUC 1.0000 and recall
+1.0000 on the same window.
+
+Two denominators to state when quoting this. The mode is 119 of 6,611 failures
+full-population, 91 of 4,639 in the training split the sweep uses. The "45×"
+oversampling figure is relative to the majority failure mode; relative to
+uniform sampling, which is what the sampler applies, the maximum is 19.2×. Fusing a per-planet tree assist at the decision window raised
 overall held-out F1 from 0.9960 to **0.9981** (recall 0.9991, 5 false negatives
 in 8,400 missions).
 
