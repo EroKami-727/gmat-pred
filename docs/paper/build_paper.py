@@ -160,21 +160,29 @@ def build(out_path: Path) -> None:
     doc.add_heading("2.1  Task and data", level=2)
     para(doc,
         "The corpus is 70,000 simulated Earth-departure missions across seven "
-        "interplanetary targets (Mercury through Neptune), 10,000 per target, "
-        "generated from a deterministic two/three-body propagator. Each mission "
-        "is parameterised by six injection offsets — three components of the "
-        "trans-orbit-insertion burn and three parking-orbit angles — and labelled "
-        "success or failure, with failures further typed by mode (surface impact, "
-        "orbit too high, missed target, and others). Telemetry is sampled at a "
-        "fixed cadence and downsampled to roughly 100 steps per mission so that "
-        "targets whose flight times differ by two orders of magnitude yield "
-        "comparable sequence lengths.")
+        "interplanetary targets (Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune), "
+        "10,000 per target, generated from a deterministic two/three-body GMAT propagator. "
+        "Each mission is parameterised by six injection offsets — three components of the "
+        "trans-orbit-insertion burn (dv_V, dv_N, dv_B) and three parking-orbit angles "
+        "(RAAN, AOP, INC) — and labelled success or failure, with failures further typed "
+        "by physical mode (surface impact, orbit too high, missed target, and others). "
+        "Telemetry is sampled at a fixed cadence (54,000 s / 15 hours for interplanetary "
+        "transfers) and downsampled to roughly 100 steps per mission so that targets whose "
+        "flight times differ by two orders of magnitude yield comparable sequence lengths. "
+        "An eighth target generated in the raw corpus (the Moon) is explicitly excluded "
+        "from the primary study set, as it represents a short 6-day Earth-centric transfer "
+        "at 60 s cadence that shares neither the cost structure nor the dynamical regime of "
+        "heliocentric transfers.")
     para(doc,
         "The screening task is: observe the first 40% of a mission's trajectory "
         "and decide whether to abort. Splits are 70/15/15 by mission, "
         "deterministic in (n, seed), and shared by every experiment through a "
-        "single definition so that no model is evaluated on data used to select "
-        "it.")
+        "single definition (src/ml/splits.py) so that no model is evaluated on data "
+        "used to select it. To ensure complete external reproducibility, the dataset is "
+        "structured as a full 71 GB parquet telemetry table alongside a compact, "
+        "stand-alone 500 MB per-planet .npz benchmark release (holding float64 sequences "
+        "and ground-truth outcome labels).")
+
 
     doc.add_heading("2.2  Models", level=2)
     para(doc,
